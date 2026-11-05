@@ -6,8 +6,11 @@ import { ControlStrip } from '../../ui/strip.ts';
 import { CrossfaderBar } from '../../ui/crossfader-bar.ts';
 import { MatchReadoutUI } from '../../ui/match-readout.ts';
 import { HandOverlayRenderer } from '../../ui/hand-overlay.ts';
+import { PoseChipRenderer } from '../../ui/pose-chip.ts';
+import { HelpGesturesOverlay } from '../help-overlay.ts';
 import { TuningPanel } from '../tuning-panel.ts';
 import { trackerClient, TrackedHand } from '../../vision/tracker-client.ts';
+import { gestureController } from '../../gesture/controller.ts';
 import { cameraService } from '../../vision/camera.ts';
 import { audioEngine } from '../../audio/engine.ts';
 
@@ -23,6 +26,8 @@ export class StageScreen implements ScreenComponent {
   private matchReadout: MatchReadoutUI | null = null;
 
   private handOverlay: HandOverlayRenderer | null = null;
+  private poseChipRenderer: PoseChipRenderer | null = null;
+  private helpOverlay: HelpGesturesOverlay | null = null;
   private tuningPanel: TuningPanel | null = null;
   private videoEl: HTMLVideoElement | null = null;
   private canvasEl: HTMLCanvasElement | null = null;
@@ -250,6 +255,11 @@ export class StageScreen implements ScreenComponent {
       window.addEventListener('resize', this.onResizeBound);
     }
 
+    const poseChipsLayer = this.element.querySelector('#pose-chips-layer') as HTMLElement;
+    if (poseChipsLayer) {
+      this.poseChipRenderer = new PoseChipRenderer(poseChipsLayer);
+    }
+
     const panelElA = this.element.querySelector('#deck-panel-a') as HTMLElement;
     const panelElB = this.element.querySelector('#deck-panel-b') as HTMLElement;
     this.deckPanelA = new DeckPanelUI(panelElA, 'A');
@@ -306,7 +316,23 @@ export class StageScreen implements ScreenComponent {
     const sw = viewport ? viewport.clientWidth : 1440;
     const sh = viewport ? viewport.clientHeight : 800;
 
-    this.handOverlay?.render(hands, vw, vh, sw, sh);
+    const now = performance.now();
+    const visuals = gestureController.processFrame(hands, now, vw, vh, sw, sh);
+
+    // Build engaged fingertips map
+    const engagedTips: { [handId: number]: number } = {};
+    for (const v of visuals) {
+      if (v.engagedFingertip !== undefined) {
+        engagedTips[v.handId] = v.engagedFingertip;
+      }
+    }
+
+    this.handOverlay?.render(hands, vw, vh, sw, sh, engagedTips);
+    this.poseChipRenderer?.render(visuals, gestureController.getHelpProgress(), sw, sh);
+
+    if (this.helpOverlay) {
+      this.helpOverlay.updateLiveHighlighting(visuals);
+    }
 
     if (this.tuningPanel) {
       this.tuningPanel.updateFingerDebug(hands, vw, vh);
@@ -403,6 +429,15 @@ export class StageScreen implements ScreenComponent {
       btnMute.textContent = state.isMuted ? 'Unmute' : 'Mute';
     }
 
+    // Gestures Help Overlay toggle
+    if (state.overlays.showGestures && !this.helpOverlay) {
+      this.helpOverlay = new HelpGesturesOverlay();
+      this.helpOverlay.mount(this.element);
+    } else if (!state.overlays.showGestures && this.helpOverlay) {
+      this.helpOverlay.unmount();
+      this.helpOverlay = null;
+    }
+
     // Tuning Panel drawer toggle
     if (state.overlays.showTuning && !this.tuningPanel) {
       this.tuningPanel = new TuningPanel();
@@ -445,9 +480,17 @@ export class StageScreen implements ScreenComponent {
     trackerClient.stop();
     cameraService.stopCamera();
 
+    if (this.helpOverlay) {
+      this.helpOverlay.unmount();
+      this.helpOverlay = null;
+    }
     if (this.tuningPanel) {
       this.tuningPanel.unmount();
       this.tuningPanel = null;
+    }
+    if (this.poseChipRenderer) {
+      this.poseChipRenderer.clear();
+      this.poseChipRenderer = null;
     }
     if (this.handOverlay) {
       this.handOverlay.clear();
