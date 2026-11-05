@@ -13,6 +13,8 @@ import { trackerClient, TrackedHand } from '../../vision/tracker-client.ts';
 import { gestureController } from '../../gesture/controller.ts';
 import { cameraService } from '../../vision/camera.ts';
 import { audioEngine } from '../../audio/engine.ts';
+import { audioMixRecorder, formatMixFilename } from '../../audio/recorder.ts';
+import { videoCompositor } from '../../export/video-compositor.ts';
 
 export class StageScreen implements ScreenComponent {
   private element: HTMLElement | null = null;
@@ -342,6 +344,11 @@ export class StageScreen implements ScreenComponent {
   private attachHeaderEvents() {
     if (!this.element) return;
 
+    const btnRec = this.element.querySelector('#btn-header-rec') as HTMLButtonElement | null;
+    if (btnRec) {
+      btnRec.addEventListener('click', () => this.toggleRecording());
+    }
+
     this.element.querySelector('#btn-header-mute')?.addEventListener('click', () => {
       appStore.toggleMute();
     });
@@ -363,6 +370,75 @@ export class StageScreen implements ScreenComponent {
   private attachKeyboardEvents() {
     window.addEventListener('keydown', this.onKeyDownBound);
     window.addEventListener('keyup', this.onKeyUpBound);
+  }
+
+  private toggleRecording() {
+    const state = appStore.getState();
+    const isRecording = state.recording.isRecording;
+
+    if (isRecording) {
+      if (state.recording.includeVideo) {
+        videoCompositor.stop();
+      } else {
+        audioMixRecorder.stop();
+      }
+    } else {
+      const audioStream = audioEngine.getRecorderStream();
+      if (!audioStream) return;
+
+      if (state.recording.includeVideo) {
+        videoCompositor.start(this.videoEl, audioStream);
+      } else {
+        audioMixRecorder.start(audioStream);
+      }
+    }
+  }
+
+  private showMixRecordedModal(blob: Blob) {
+    if (!this.element) return;
+    const existing = this.element.querySelector('#mix-recorded-modal');
+    if (existing) existing.remove();
+
+    const state = appStore.getState();
+    const isVideo = state.recording.includeVideo;
+    const ext = isVideo ? videoCompositor.getExtension() : audioMixRecorder.getExtension();
+
+    const modal = document.createElement('div');
+    modal.id = 'mix-recorded-modal';
+    modal.className = 'overlay-backdrop';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+
+    modal.innerHTML = `
+      <div style="background-color: var(--color-surface-1); border: var(--border-hairline-strong); border-radius: var(--radius-panel); padding: var(--space-24); display: flex; flex-direction: column; gap: var(--space-16); min-width: 320px; text-align: center;">
+        <h3 style="font-size: 15px; font-weight: 500;">Mix recorded.</h3>
+        <div style="display: flex; justify-content: center; gap: var(--space-12);">
+          <button class="primary" id="btn-modal-save">Save</button>
+          <button id="btn-modal-discard">Discard</button>
+        </div>
+      </div>
+    `;
+
+    this.element.appendChild(modal);
+
+    const btnSave = modal.querySelector('#btn-modal-save') as HTMLButtonElement;
+    const btnDiscard = modal.querySelector('#btn-modal-discard') as HTMLButtonElement;
+
+    btnSave.addEventListener('click', () => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = formatMixFilename(ext || (isVideo ? 'webm' : 'webm'));
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      modal.remove();
+      appStore.setRecordedBlob(null, null);
+    });
+
+    btnDiscard.addEventListener('click', () => {
+      modal.remove();
+      appStore.setRecordedBlob(null, null);
+    });
   }
 
   private handleKeyDown(e: KeyboardEvent) {
@@ -392,6 +468,10 @@ export class StageScreen implements ScreenComponent {
     // P: Deck B faster
     else if (key === 'P') {
       appStore.setNudge('B', 'faster', true);
+    }
+    // R: Start or stop recording
+    else if (key === 'R') {
+      this.toggleRecording();
     }
     // M: Mute or unmute
     else if (key === 'M') {
@@ -427,6 +507,28 @@ export class StageScreen implements ScreenComponent {
     const btnMute = this.element.querySelector('#btn-header-mute') as HTMLButtonElement | null;
     if (btnMute) {
       btnMute.textContent = state.isMuted ? 'Unmute' : 'Mute';
+    }
+
+    const btnRec = this.element.querySelector('#btn-header-rec') as HTMLButtonElement | null;
+    const recIndicator = this.element.querySelector('#rec-indicator') as HTMLElement | null;
+    const recTimer = this.element.querySelector('#rec-timer') as HTMLElement | null;
+
+    if (btnRec) {
+      btnRec.textContent = state.recording.isRecording ? 'Stop' : 'Rec';
+    }
+
+    if (recIndicator) {
+      recIndicator.style.display = state.recording.isRecording ? 'inline-flex' : 'none';
+      if (recTimer && state.recording.isRecording) {
+        const mins = Math.floor(state.recording.durationSec / 60);
+        const secs = Math.floor(state.recording.durationSec % 60);
+        recTimer.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
+    }
+
+    // Modal when recording is ready
+    if (state.recording.recordedBlob && !this.element.querySelector('#mix-recorded-modal')) {
+      this.showMixRecordedModal(state.recording.recordedBlob);
     }
 
     // Gestures Help Overlay toggle
