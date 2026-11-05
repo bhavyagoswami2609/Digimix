@@ -5,6 +5,10 @@ import { DeckPanelUI } from '../../ui/deck-panel.ts';
 import { ControlStrip } from '../../ui/strip.ts';
 import { CrossfaderBar } from '../../ui/crossfader-bar.ts';
 import { MatchReadoutUI } from '../../ui/match-readout.ts';
+import { HandOverlayRenderer } from '../../ui/hand-overlay.ts';
+import { TuningPanel } from '../tuning-panel.ts';
+import { trackerClient, TrackedHand } from '../../vision/tracker-client.ts';
+import { cameraService } from '../../vision/camera.ts';
 import { audioEngine } from '../../audio/engine.ts';
 
 export class StageScreen implements ScreenComponent {
@@ -17,6 +21,11 @@ export class StageScreen implements ScreenComponent {
   private stripB: ControlStrip | null = null;
   private crossfaderBar: CrossfaderBar | null = null;
   private matchReadout: MatchReadoutUI | null = null;
+
+  private handOverlay: HandOverlayRenderer | null = null;
+  private tuningPanel: TuningPanel | null = null;
+  private videoEl: HTMLVideoElement | null = null;
+  private canvasEl: HTMLCanvasElement | null = null;
 
   private onKeyDownBound = this.handleKeyDown.bind(this);
   private onKeyUpBound = this.handleKeyUp.bind(this);
@@ -232,6 +241,15 @@ export class StageScreen implements ScreenComponent {
   private initComponents() {
     if (!this.element) return;
 
+    this.videoEl = this.element.querySelector('#stage-video') as HTMLVideoElement;
+    this.canvasEl = this.element.querySelector('#stage-hand-canvas') as HTMLCanvasElement;
+
+    if (this.canvasEl) {
+      this.handOverlay = new HandOverlayRenderer(this.canvasEl);
+      this.resizeCanvas();
+      window.addEventListener('resize', this.onResizeBound);
+    }
+
     const panelElA = this.element.querySelector('#deck-panel-a') as HTMLElement;
     const panelElB = this.element.querySelector('#deck-panel-b') as HTMLElement;
     this.deckPanelA = new DeckPanelUI(panelElA, 'A');
@@ -247,6 +265,52 @@ export class StageScreen implements ScreenComponent {
 
     const matchEl = this.element.querySelector('#match-readout') as HTMLElement;
     this.matchReadout = new MatchReadoutUI(matchEl);
+
+    this.initVisionPipeline();
+  }
+
+  private onResizeBound = () => this.resizeCanvas();
+
+  private resizeCanvas() {
+    if (!this.canvasEl || !this.element) return;
+    const viewport = this.element.querySelector('#stage-viewport') as HTMLElement | null;
+    if (viewport) {
+      this.handOverlay?.resize(viewport.clientWidth, viewport.clientHeight);
+    }
+  }
+
+  private async initVisionPipeline() {
+    const state = appStore.getState();
+    if (state.camera.permission !== 'granted' || !this.videoEl) {
+      return;
+    }
+
+    try {
+      const stream = cameraService.getStream() || (await cameraService.startCamera(this.videoEl));
+      if (this.videoEl.srcObject !== stream) {
+        this.videoEl.srcObject = stream;
+        await this.videoEl.play().catch(() => {});
+      }
+
+      trackerClient.start(this.videoEl, (hands, vw, vh) => {
+        this.onHandsTracked(hands, vw, vh);
+      });
+    } catch {
+      appStore.setTrackingMetrics(0, 0, 'failed');
+    }
+  }
+
+  private onHandsTracked(hands: TrackedHand[], vw: number, vh: number) {
+    if (!this.canvasEl) return;
+    const viewport = this.element?.querySelector('#stage-viewport') as HTMLElement | null;
+    const sw = viewport ? viewport.clientWidth : 1440;
+    const sh = viewport ? viewport.clientHeight : 800;
+
+    this.handOverlay?.render(hands, vw, vh, sw, sh);
+
+    if (this.tuningPanel) {
+      this.tuningPanel.updateFingerDebug(hands, vw, vh);
+    }
   }
 
   private attachHeaderEvents() {
@@ -339,6 +403,22 @@ export class StageScreen implements ScreenComponent {
       btnMute.textContent = state.isMuted ? 'Unmute' : 'Mute';
     }
 
+    // Tuning Panel drawer toggle
+    if (state.overlays.showTuning && !this.tuningPanel) {
+      this.tuningPanel = new TuningPanel();
+      this.tuningPanel.mount(this.element);
+    } else if (!state.overlays.showTuning && this.tuningPanel) {
+      this.tuningPanel.unmount();
+      this.tuningPanel = null;
+    }
+
+    // Update Rest Zone line according to tuning setting
+    const restZoneLine = this.element.querySelector('.rest-zone-line') as HTMLElement | null;
+    if (restZoneLine) {
+      const pct = (state.tuning.restZoneHeight * 100).toFixed(1);
+      restZoneLine.style.bottom = `${pct}%`;
+    }
+
     // Update Deck Panels
     if (this.deckPanelA) this.deckPanelA.update(state.decks.A);
     if (this.deckPanelB) this.deckPanelB.update(state.decks.B);
@@ -360,6 +440,19 @@ export class StageScreen implements ScreenComponent {
   unmount(): void {
     window.removeEventListener('keydown', this.onKeyDownBound);
     window.removeEventListener('keyup', this.onKeyUpBound);
+    window.removeEventListener('resize', this.onResizeBound);
+
+    trackerClient.stop();
+    cameraService.stopCamera();
+
+    if (this.tuningPanel) {
+      this.tuningPanel.unmount();
+      this.tuningPanel = null;
+    }
+    if (this.handOverlay) {
+      this.handOverlay.clear();
+      this.handOverlay = null;
+    }
 
     if (this.unsubscribe) {
       this.unsubscribe();
