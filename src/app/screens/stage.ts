@@ -68,7 +68,7 @@ export class StageScreen implements ScreenComponent {
           </div>
           <button id="btn-header-mute">Mute</button>
           <button id="btn-header-rec">Rec</button>
-          <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text-dim); cursor: pointer; user-select: none;">
+          <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text-dim); cursor: pointer; user-select: none;" title="Can add lag on slower machines.">
             <input type="checkbox" id="chk-include-video" style="accent-color: var(--color-text);">
             <span>Include video</span>
           </label>
@@ -76,6 +76,9 @@ export class StageScreen implements ScreenComponent {
           <button id="btn-header-help">Help</button>
         </div>
       </header>
+
+      <!-- System Message Toast -->
+      <div id="stage-system-message" style="display: none; position: absolute; top: 56px; left: 50%; transform: translateX(-50%); background: var(--color-surface-1); border: var(--border-hairline-strong); border-radius: var(--radius-control); padding: 8px 16px; font-size: 13px; color: var(--color-text); z-index: 50;"></div>
 
       <!-- Viewport area with camera & UI overlay -->
       <main class="stage-viewport" id="stage-viewport">
@@ -309,6 +312,7 @@ export class StageScreen implements ScreenComponent {
       });
     } catch {
       appStore.setTrackingMetrics(0, 0, 'failed');
+      appStore.setSystemMessage('Hand tracking could not start. You can keep going with the mouse.');
     }
   }
 
@@ -507,6 +511,16 @@ export class StageScreen implements ScreenComponent {
     const btnMute = this.element.querySelector('#btn-header-mute') as HTMLButtonElement | null;
     if (btnMute) {
       btnMute.textContent = state.isMuted ? 'Unmute' : 'Mute';
+    }
+
+    const sysMsgEl = this.element.querySelector('#stage-system-message') as HTMLElement | null;
+    if (sysMsgEl) {
+      if (state.systemMessage) {
+        sysMsgEl.textContent = state.systemMessage;
+        sysMsgEl.style.display = 'block';
+      } else {
+        sysMsgEl.style.display = 'none';
+      }
     }
 
     const btnRec = this.element.querySelector('#btn-header-rec') as HTMLButtonElement | null;
