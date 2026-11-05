@@ -4,6 +4,12 @@ import { LandingScreen } from './app/screens/landing.ts';
 import { GuideScreen } from './app/screens/guide.ts';
 import { SetupScreen } from './app/screens/setup.ts';
 import { StageScreen } from './app/screens/stage.ts';
+import { audioEngine } from './audio/engine.ts';
+
+// Connect audio engine to store: "The audio engine reads from the store. Never let UI code talk to the audio engine directly."
+appStore.subscribe((state) => {
+  audioEngine.syncWithStore(state);
+});
 
 const appContainer = document.getElementById('app');
 

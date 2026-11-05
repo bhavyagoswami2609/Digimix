@@ -1,10 +1,25 @@
 import { appStore } from '../store.ts';
 import { ScreenComponent } from '../router.ts';
 import { APP_NAME } from '../../config.ts';
+import { DeckPanelUI } from '../../ui/deck-panel.ts';
+import { ControlStrip } from '../../ui/strip.ts';
+import { CrossfaderBar } from '../../ui/crossfader-bar.ts';
+import { MatchReadoutUI } from '../../ui/match-readout.ts';
+import { audioEngine } from '../../audio/engine.ts';
 
 export class StageScreen implements ScreenComponent {
   private element: HTMLElement | null = null;
   private unsubscribe: (() => void) | null = null;
+
+  private deckPanelA: DeckPanelUI | null = null;
+  private deckPanelB: DeckPanelUI | null = null;
+  private stripA: ControlStrip | null = null;
+  private stripB: ControlStrip | null = null;
+  private crossfaderBar: CrossfaderBar | null = null;
+  private matchReadout: MatchReadoutUI | null = null;
+
+  private onKeyDownBound = this.handleKeyDown.bind(this);
+  private onKeyUpBound = this.handleKeyUp.bind(this);
 
   mount(container: HTMLElement): void {
     this.element = document.createElement('div');
@@ -13,9 +28,15 @@ export class StageScreen implements ScreenComponent {
     this.render();
     container.appendChild(this.element);
 
-    this.unsubscribe = appStore.subscribe(() => {
-      this.updateView();
+    this.initComponents();
+    this.attachHeaderEvents();
+    this.attachKeyboardEvents();
+
+    this.unsubscribe = appStore.subscribe((state) => {
+      this.updateView(state);
     });
+
+    this.updateView(appStore.getState());
   }
 
   private render() {
@@ -206,12 +227,31 @@ export class StageScreen implements ScreenComponent {
         <div class="stage-footer-status mono" id="stage-footer-status">60 FPS | 0 ms</div>
       </footer>
     `;
+  }
 
-    this.attachHeaderEvents();
+  private initComponents() {
+    if (!this.element) return;
+
+    const panelElA = this.element.querySelector('#deck-panel-a') as HTMLElement;
+    const panelElB = this.element.querySelector('#deck-panel-b') as HTMLElement;
+    this.deckPanelA = new DeckPanelUI(panelElA, 'A');
+    this.deckPanelB = new DeckPanelUI(panelElB, 'B');
+
+    const readoutElA = this.element.querySelector('#control-readout-a') as HTMLElement;
+    const readoutElB = this.element.querySelector('#control-readout-b') as HTMLElement;
+    this.stripA = new ControlStrip(readoutElA, 'A');
+    this.stripB = new ControlStrip(readoutElB, 'B');
+
+    const xfaderEl = this.element.querySelector('#crossfader-bar') as HTMLElement;
+    this.crossfaderBar = new CrossfaderBar(xfaderEl);
+
+    const matchEl = this.element.querySelector('#match-readout') as HTMLElement;
+    this.matchReadout = new MatchReadoutUI(matchEl);
   }
 
   private attachHeaderEvents() {
     if (!this.element) return;
+
     this.element.querySelector('#btn-header-mute')?.addEventListener('click', () => {
       appStore.toggleMute();
     });
@@ -221,6 +261,7 @@ export class StageScreen implements ScreenComponent {
     this.element.querySelector('#btn-header-help')?.addEventListener('click', () => {
       appStore.toggleGesturesOverlay();
     });
+
     const chkVideo = this.element.querySelector('#chk-include-video') as HTMLInputElement | null;
     if (chkVideo) {
       chkVideo.addEventListener('change', () => {
@@ -229,38 +270,114 @@ export class StageScreen implements ScreenComponent {
     }
   }
 
-  private updateView() {
-    if (!this.element) return;
-    const state = appStore.getState();
+  private attachKeyboardEvents() {
+    window.addEventListener('keydown', this.onKeyDownBound);
+    window.addEventListener('keyup', this.onKeyUpBound);
+  }
 
-    // Mute button label
+  private handleKeyDown(e: KeyboardEvent) {
+    if (e.repeat) return;
+    const key = e.key.toUpperCase();
+
+    // 1: Sync deck A
+    if (key === '1') {
+      audioEngine.performSync('A');
+    }
+    // 2: Sync deck B
+    else if (key === '2') {
+      audioEngine.performSync('B');
+    }
+    // Q: Deck A slower
+    else if (key === 'Q') {
+      appStore.setNudge('A', 'slower', true);
+    }
+    // W: Deck A faster
+    else if (key === 'W') {
+      appStore.setNudge('A', 'faster', true);
+    }
+    // O: Deck B slower
+    else if (key === 'O') {
+      appStore.setNudge('B', 'slower', true);
+    }
+    // P: Deck B faster
+    else if (key === 'P') {
+      appStore.setNudge('B', 'faster', true);
+    }
+    // M: Mute or unmute
+    else if (key === 'M') {
+      appStore.toggleMute();
+    }
+    // T: Tuning
+    else if (key === 'T') {
+      appStore.toggleTuningPanel();
+    }
+    // H: This list (help gestures overlay)
+    else if (key === 'H') {
+      appStore.toggleGesturesOverlay();
+    }
+  }
+
+  private handleKeyUp(e: KeyboardEvent) {
+    const key = e.key.toUpperCase();
+    if (key === 'Q') {
+      appStore.setNudge('A', 'slower', false);
+    } else if (key === 'W') {
+      appStore.setNudge('A', 'faster', false);
+    } else if (key === 'O') {
+      appStore.setNudge('B', 'slower', false);
+    } else if (key === 'P') {
+      appStore.setNudge('B', 'faster', false);
+    }
+  }
+
+  private updateView(state: ReturnType<typeof appStore.getState>) {
+    if (!this.element) return;
+
+    // Header buttons
     const btnMute = this.element.querySelector('#btn-header-mute') as HTMLButtonElement | null;
     if (btnMute) {
       btnMute.textContent = state.isMuted ? 'Unmute' : 'Mute';
     }
 
-    // Play/Pause labels
-    const btnPlayA = this.element.querySelector('#btn-play-a') as HTMLButtonElement | null;
-    if (btnPlayA) {
-      btnPlayA.textContent = state.decks.A.isPlaying ? 'Pause' : 'Play';
-    }
-    const btnPlayB = this.element.querySelector('#btn-play-b') as HTMLButtonElement | null;
-    if (btnPlayB) {
-      btnPlayB.textContent = state.decks.B.isPlaying ? 'Pause' : 'Play';
-    }
+    // Update Deck Panels
+    if (this.deckPanelA) this.deckPanelA.update(state.decks.A);
+    if (this.deckPanelB) this.deckPanelB.update(state.decks.B);
 
-    // Filenames
-    const fnA = this.element.querySelector('#filename-a');
-    if (fnA) fnA.textContent = state.decks.A.file?.name || 'No track loaded';
-    const fnB = this.element.querySelector('#filename-b');
-    if (fnB) fnB.textContent = state.decks.B.file?.name || 'No track loaded';
+    // Update Strips
+    if (this.stripA) this.stripA.update(state.decks.A);
+    if (this.stripB) this.stripB.update(state.decks.B);
+
+    // Update Crossfader
+    if (this.crossfaderBar) this.crossfaderBar.update(state.crossfader);
+
+    // Footer metrics
+    const statusEl = this.element.querySelector('#stage-footer-status');
+    if (statusEl) {
+      statusEl.textContent = `${state.camera.fps} FPS | ${Math.round(state.camera.latencyMs)} ms`;
+    }
   }
 
   unmount(): void {
+    window.removeEventListener('keydown', this.onKeyDownBound);
+    window.removeEventListener('keyup', this.onKeyUpBound);
+
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
     }
+    if (this.deckPanelA) {
+      this.deckPanelA.destroy();
+      this.deckPanelA = null;
+    }
+    if (this.deckPanelB) {
+      this.deckPanelB.destroy();
+      this.deckPanelB = null;
+    }
+    if (this.matchReadout) {
+      this.matchReadout.destroy();
+      this.matchReadout = null;
+    }
+
     if (this.element && this.element.parentElement) {
       this.element.parentElement.removeChild(this.element);
     }

@@ -1,6 +1,7 @@
 import { appStore, DeckId } from '../store.ts';
 import { ScreenComponent } from '../router.ts';
 import { AUDIO_CONFIG } from '../../config.ts';
+import { audioEngine } from '../../audio/engine.ts';
 
 export class SetupScreen implements ScreenComponent {
   private element: HTMLElement | null = null;
@@ -159,14 +160,8 @@ export class SetupScreen implements ScreenComponent {
       return;
     }
 
-    // Store file info with temporary duration 0 while decoding in Phase B audio engine
     try {
-      appStore.setDeckFile(deckId, {
-        name: file.name,
-        durationSec: 0,
-        buffer: null
-      });
-      appStore.setBpmAnalysisState(deckId, true);
+      await audioEngine.loadTrackFile(deckId, file);
     } catch {
       this.showFileError(deckId);
     }
