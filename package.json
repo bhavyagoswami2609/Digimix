@@ -1,0 +1,24 @@
+{
+  "name": "deckhand",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run copy-wasm && tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "copy-wasm": "node scripts/copy-wasm.mjs"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/instrument-sans": "5.3.0",
+    "@mediapipe/tasks-vision": "1.1.1",
+    "web-audio-beat-detector": "8.2.39"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "4.1.12"
+  }
+}
