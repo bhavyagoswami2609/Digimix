@@ -98,6 +98,14 @@ export class AudioEngine {
     }
   }
 
+  restartTrack(id: 'A' | 'B') {
+    this.ensureStartupRamp();
+    const deck = id === 'A' ? this.deckA : this.deckB;
+    if (deck) {
+      deck.restart();
+    }
+  }
+
   // --- Track Loading and Decoding ---
 
   async loadTrackFile(deckId: 'A' | 'B', file: File): Promise<AudioBuffer> {
@@ -166,20 +174,23 @@ export class AudioEngine {
 
   // --- Position & Match Readout Update Loop ---
 
+  private lastPositionUpdateTime = 0;
   private startPositionTimer() {
     if (this.timerId !== null) return;
 
-    // Run at ~30-60 Hz for smooth playhead and match calculations
-    const loop = () => {
+    const loop = (t: number) => {
       if (this.deckA && this.deckB) {
-        const posA = this.deckA.getCurrentPosition();
-        const posB = this.deckB.getCurrentPosition();
+        if (t - this.lastPositionUpdateTime >= 200) {
+          this.lastPositionUpdateTime = t;
+          const posA = this.deckA.getCurrentPosition();
+          const posB = this.deckB.getCurrentPosition();
 
-        if (this.deckA.getIsPlaying()) {
-          appStore.setDeckPosition('A', posA);
-        }
-        if (this.deckB.getIsPlaying()) {
-          appStore.setDeckPosition('B', posB);
+          if (this.deckA.getIsPlaying()) {
+            appStore.setDeckPosition('A', posA);
+          }
+          if (this.deckB.getIsPlaying()) {
+            appStore.setDeckPosition('B', posB);
+          }
         }
       }
       this.timerId = requestAnimationFrame(loop);
@@ -285,7 +296,13 @@ export class AudioEngine {
       node.setNudge('faster', deck.isNudgingFaster);
     }
 
-    if (deck.isPlaying !== prevDeck.isPlaying) {
+    if (deck.hotCueAction === 'set' && prevDeck.hotCueAction !== 'set') {
+      const pos = node.setHotCue();
+      appStore.setHotCuePosition(id, pos);
+    } else if (deck.hotCueAction === 'jump' && prevDeck.hotCueAction !== 'jump') {
+      this.ensureStartupRamp();
+      node.jumpToHotCue();
+    } else if (deck.isPlaying !== prevDeck.isPlaying) {
       if (deck.isPlaying) {
         this.ensureStartupRamp();
         node.play();
@@ -296,14 +313,6 @@ export class AudioEngine {
 
     if (deck.isCueing && !prevDeck.isCueing) {
       node.cue();
-    }
-
-    if (deck.hotCueAction === 'set' && prevDeck.hotCueAction !== 'set') {
-      const pos = node.setHotCue();
-      appStore.setHotCuePosition(id, pos);
-    } else if (deck.hotCueAction === 'jump' && prevDeck.hotCueAction !== 'jump') {
-      this.ensureStartupRamp();
-      node.jumpToHotCue();
     }
   }
 

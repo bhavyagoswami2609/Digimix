@@ -66,5 +66,20 @@ describe('Trigger Detector', () => {
     // Frame 2 at t0 + 16ms still holding -> does not re-fire
     const res2 = detector.update(true, hotCueAction, t0 + 16, 0);
     expect(res2.hasFired).toBe(false);
+
+    // Frame 3 at t0 + 50ms: tracking flickers for 1 frame (isPoseActive = false)
+    detector.update(false, hotCueAction, t0 + 50, 0);
+
+    // Frame 4 at t0 + 66ms: tracking resumes (isPoseActive = true) -> MUST NOT re-fire!
+    const res4 = detector.update(true, hotCueAction, t0 + 66, 0);
+    expect(res4.hasFired).toBe(false);
+
+    // Clean release for > 300ms
+    detector.update(false, hotCueAction, t0 + 100, 0);
+    detector.update(false, hotCueAction, t0 + 500, 0);
+
+    // Now re-triggering at t0 + 600ms -> fires cleanly!
+    const res5 = detector.update(true, hotCueAction, t0 + 600, 0);
+    expect(res5.hasFired).toBe(true);
   });
 });

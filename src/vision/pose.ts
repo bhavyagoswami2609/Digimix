@@ -6,6 +6,7 @@ export type DetectedPoseName =
   | 'fist'
   | 'spiderman_inward'
   | 'spiderman_outward'
+  | 'rotate_left'
   | 'point'
   | 'peace'
   | 'pinch_index'
@@ -191,7 +192,16 @@ export function classifyInstantPose(
     return nearest.name;
   }
 
-  // 6. Open:
+  // 6. Rotate left (wrist rotated towards the left, pointing left):
+  // Knuckles and fingertips point significantly to the left of the wrist in mirrored screen space
+  const isRotatedLeft =
+    (wrist.x - midBase.x > 0.35 * s) &&
+    (wrist.x - pts[12].x > 0.45 * s || wrist.x - pts[8].x > 0.45 * s);
+  if (isRotatedLeft && !currentEngagedPinch) {
+    return 'rotate_left';
+  }
+
+  // 7. Open:
   // "All four fingers extended"
   if (allFourExtended) {
     return 'open';
@@ -235,6 +245,7 @@ export class DebouncedPoseDetector {
 
     const isInstantTrigger = (
       raw === 'open' ||
+      raw === 'rotate_left' ||
       raw === 'spiderman_inward' ||
       raw === 'spiderman_outward' ||
       raw === 'fist' ||

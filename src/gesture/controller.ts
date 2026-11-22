@@ -5,6 +5,7 @@ import { TrackedHand } from '../vision/tracker-client.ts';
 import { GrabController, ControlledTarget } from './grab.ts';
 import { TriggerDetector } from './triggers.ts';
 import { eqCurve, tempoCurve } from '../audio/curves.ts';
+import { audioEngine } from '../audio/engine.ts';
 
 export interface HandGestureVisualState {
   handId: number;
@@ -272,8 +273,16 @@ export class GestureController {
       }
     }
 
-    // B. Triggers: Instantaneous Play, Cue, and Hot Cues
-    if (pose === 'open' || pose === 'thumbs_up') {
+    // B. Triggers: Instantaneous Play/Pause, Restart from start, and Hot Cues
+    if (pose === 'rotate_left') {
+      poseNameLabel = 'Restart';
+      const trRes = trigger.update(true, { type: 'restart', deckId }, now, 0);
+      triggerProgress = trRes.progress;
+      if (trRes.hasFired) {
+        audioEngine.restartTrack(deckId);
+        appStore.restartTrack(deckId);
+      }
+    } else if (pose === 'open' || pose === 'thumbs_up') {
       const isPlaying = appStore.getState().decks[deckId].isPlaying;
       poseNameLabel = isPlaying ? 'Pause' : 'Play';
       const trRes = trigger.update(true, { type: 'play_pause', deckId }, now, 0);
@@ -295,16 +304,9 @@ export class GestureController {
       if (trRes.hasFired) {
         appStore.jumpHotCue(deckId);
       }
-    } else if (pose === 'fist') {
-      poseNameLabel = 'Cue';
-      const trRes = trigger.update(true, { type: 'cue', deckId }, now, 0);
-      triggerProgress = trRes.progress;
-      if (trRes.hasFired) {
-        appStore.triggerCue(deckId);
-      }
     } else {
       // No trigger pose active
-      trigger.update(false, { type: 'cue', deckId }, now, 0);
+      trigger.update(false, { type: 'play_pause', deckId }, now, 0);
     }
 
     if (!poseNameLabel && !valueChipText) {

@@ -255,6 +255,22 @@ class Store {
     this.notify();
   }
 
+  restartTrack(deckId: DeckId) {
+    const deck = this.state.decks[deckId];
+    this.state = {
+      ...this.state,
+      decks: {
+        ...this.state.decks,
+        [deckId]: {
+          ...deck,
+          currentPositionSec: 0,
+          isPlaying: true
+        }
+      }
+    };
+    this.notify();
+  }
+
   triggerCue(deckId: DeckId) {
     const deck = this.state.decks[deckId];
     this.state = {

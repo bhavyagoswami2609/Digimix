@@ -1,6 +1,6 @@
 import { appStore, DeckId } from '../app/store.ts';
 import { VISION_CONFIG } from '../config.ts';
-import { calculatePalmCenter, assignDeck, NormalizedLandmark } from './landmarks.ts';
+import { calculatePalmCenter, NormalizedLandmark } from './landmarks.ts';
 import { OneEuroPoint2D } from './one-euro.ts';
 
 export interface TrackedHand {
@@ -340,9 +340,11 @@ export class TrackerClient {
       const activeDeck = this.activeDeckQuery ? this.activeDeckQuery(h.id) : null;
       if (activeDeck) {
         h.deckId = activeDeck;
-      } else {
-        h.deckId = assignDeck(h.smoothedPalmCenter.x, h.deckId);
+      } else if (!h.deckId) {
+        // Assign on initial detection based on side (< 0.5 is Deck A, >= 0.5 is Deck B)
+        h.deckId = h.smoothedPalmCenter.x < 0.5 ? 'A' : 'B';
       }
+      // Once assigned, the hand's deck is locked and never flips on a single-hand sweep
     }
 
     this.activeVisibleHands = matchedThisFrame;

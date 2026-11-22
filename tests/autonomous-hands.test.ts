@@ -5,7 +5,7 @@ import { TrackedHand } from '../src/vision/tracker-client.ts';
 import { OneEuroPoint2D } from '../src/vision/one-euro.ts';
 import { NormalizedLandmark } from '../src/vision/landmarks.ts';
 
-function createMockLandmarks(pose: 'pinch_index' | 'open' | 'spiderman_inward' | 'spiderman_outward' | 'point' | 'fist'): NormalizedLandmark[] {
+function createMockLandmarks(pose: 'pinch_index' | 'open' | 'spiderman_inward' | 'spiderman_outward' | 'point' | 'fist' | 'rotate_left'): NormalizedLandmark[] {
   // 21 landmarks
   // Wrist at (0.5, 0.5)
   const lms: NormalizedLandmark[] = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5, z: 0 }));
@@ -14,7 +14,14 @@ function createMockLandmarks(pose: 'pinch_index' | 'open' | 'spiderman_inward' |
   lms[0] = { x: 0.5, y: 0.7, z: 0 };
   lms[9] = { x: 0.5, y: 0.5, z: 0 }; // distance = 0.2 * 360 = 72px
 
-  if (pose === 'open') {
+  if (pose === 'rotate_left') {
+    // Hand rotated towards the left: knuckles and tips point to the left of wrist in mirrored space
+    lms[0] = { x: 0.5, y: 0.7, z: 0 }; // mirrored x = 0.5
+    lms[9] = { x: 0.75, y: 0.65, z: 0 }; // mirrored x = 0.25 (to the left of 0.5)
+    lms[8] = { x: 0.85, y: 0.60, z: 0 }; // mirrored x = 0.15
+    lms[12] = { x: 0.90, y: 0.65, z: 0 }; // mirrored x = 0.10
+    lms[4] = { x: 0.65, y: 0.60, z: 0 };
+  } else if (pose === 'open') {
     // All fingers extended (tips far from wrist)
     lms[4] = { x: 0.35, y: 0.4, z: 0 };
     lms[8] = { x: 0.45, y: 0.2, z: 0 };
@@ -60,7 +67,7 @@ function createTrackedHand(
   deckId: 'A' | 'B',
   x: number,
   y: number,
-  pose: 'pinch_index' | 'open' | 'spiderman_inward' | 'spiderman_outward' | 'point' | 'fist'
+  pose: 'pinch_index' | 'open' | 'spiderman_inward' | 'spiderman_outward' | 'point' | 'fist' | 'rotate_left'
 ): TrackedHand {
   return {
     id,
@@ -175,5 +182,33 @@ describe('Autonomous Two-Hand Simultaneous Mixing', () => {
     expect(state.decks.B.isPlaying).toBe(false);
     // Deck B hot cue was set
     expect(state.decks.B.hotCueAction).toBe('set');
+  });
+
+  it('rotates hand towards the left to restart song from the beginning', () => {
+    // Set position to 45 seconds and playing
+    appStore.setDeckPosition('A', 45);
+    appStore.setTransportPlaying('A', true);
+
+    const handA = createTrackedHand(1, 'A', 0.30, 0.50, 'rotate_left');
+    controller.processFrame([handA], 1000);
+
+    const state = appStore.getState();
+    // Restarted to 0 and playing
+    expect(state.decks.A.currentPositionSec).toBe(0);
+    expect(state.decks.A.isPlaying).toBe(true);
+  });
+
+  it('keeps playback position when paused and resumed with open hand', () => {
+    // Deck starts at 30 seconds
+    appStore.setDeckPosition('A', 30);
+    appStore.setTransportPlaying('A', false);
+
+    const handA = createTrackedHand(1, 'A', 0.30, 0.50, 'open');
+    controller.processFrame([handA], 1000);
+
+    const state = appStore.getState();
+    // Starts playing from 30 seconds, does NOT reset to 0
+    expect(state.decks.A.isPlaying).toBe(true);
+    expect(state.decks.A.currentPositionSec).toBe(30);
   });
 });

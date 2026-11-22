@@ -159,6 +159,14 @@ export class DeckAudioNode {
     this.offset = this.cuePoint;
   }
 
+  restart() {
+    this.stopInternal();
+    this.offset = 0;
+    this.cuePoint = 0;
+    this.startSourceAt(0);
+    this.isPlaying = true;
+  }
+
   setHotCue(): number {
     const pos = this.getCurrentPosition();
     this.hotCuePoint = pos;
@@ -168,16 +176,12 @@ export class DeckAudioNode {
   jumpToHotCue() {
     if (this.hotCuePoint === null) {
       this.setHotCue();
-      return;
     }
-    const target = this.hotCuePoint;
+    const target = this.hotCuePoint!;
     this.offset = target;
-    if (this.isPlaying) {
-      this.stopInternal();
-      this.startSourceAt(target);
-    } else {
-      this.play();
-    }
+    this.stopInternal();
+    this.startSourceAt(target);
+    this.isPlaying = true;
   }
 
   getHotCue(): number | null {

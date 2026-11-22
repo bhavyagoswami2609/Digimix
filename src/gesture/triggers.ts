@@ -3,6 +3,7 @@ import { DeckId } from '../app/store.ts';
 
 export type TriggerAction =
   | { type: 'play_pause'; deckId: DeckId }
+  | { type: 'restart'; deckId: DeckId }
   | { type: 'cue'; deckId: DeckId }
   | { type: 'set_hotcue'; deckId: DeckId }
   | { type: 'jump_hotcue'; deckId: DeckId }
@@ -21,6 +22,7 @@ export class TriggerDetector {
   private fired = false;
   private cooldownUntilTime = 0;
   private activeAction: TriggerAction | null = null;
+  private absentStartTime = 0;
 
   update(
     isPoseActive: boolean,
@@ -28,26 +30,33 @@ export class TriggerDetector {
     now: number,
     requiredHoldTimeMs = CONTROL_CONFIG.DEFAULT_TRIGGER_HOLD_MS
   ): { hasFired: boolean; action: TriggerAction | null; progress: number } {
-    // Check cooldown: "require the pose to end and 800 ms to pass before the next trigger"
-    if (now < this.cooldownUntilTime) {
-      return { hasFired: false, action: null, progress: 0 };
-    }
-
     if (!isPoseActive) {
       if (this.isHolding) {
         this.isHolding = false;
         this.holdStartTime = 0;
       }
-      this.fired = false;
+      // Require the pose to be absent for at least 300 ms before resetting the fired latch
+      // This prevents single-frame tracking flutter from re-firing instant triggers
+      if (this.absentStartTime === 0) {
+        this.absentStartTime = now;
+      } else if (now - this.absentStartTime >= 300) {
+        this.fired = false;
+      }
       return { hasFired: false, action: null, progress: 0 };
     }
 
     // Pose is active
+    this.absentStartTime = 0;
+
+    // Check cooldown: "require the pose to end and 800 ms to pass before the next trigger"
+    if (now < this.cooldownUntilTime) {
+      return { hasFired: false, action: null, progress: 0 };
+    }
+
     if (!this.isHolding) {
       this.isHolding = true;
       this.holdStartTime = now;
       this.activeAction = action;
-      this.fired = false;
     }
 
     if (this.fired) {
@@ -71,5 +80,6 @@ export class TriggerDetector {
     this.holdStartTime = 0;
     this.fired = false;
     this.activeAction = null;
+    this.absentStartTime = 0;
   }
 }

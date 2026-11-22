@@ -82,10 +82,10 @@ export class HelpGesturesOverlay {
               <td>Spider-Man sign, thumb outward</td>
               <td>Jumps to Hot Cue 1 and plays</td>
             </tr>
-            <tr data-gesture="Cue">
-              <td>Cue</td>
-              <td>Fist</td>
-              <td>Returns to cue point instantly</td>
+            <tr data-gesture="Restart">
+              <td>Restart</td>
+              <td>Rotate hand towards the left</td>
+              <td>Starts from the beginning of the track</td>
             </tr>
             <tr data-gesture="Reset">
               <td>Reset</td>
@@ -157,6 +157,9 @@ export class HelpGesturesOverlay {
       if (!v.poseName) continue;
       let targetAttr = v.poseName;
       if (v.poseName === 'Play' || v.poseName === 'Pause') targetAttr = 'Play_Pause';
+      if (v.poseName === 'Set Cue') targetAttr = 'Set_HotCue';
+      if (v.poseName === 'Hot Cue') targetAttr = 'Jump_HotCue';
+      if (v.poseName === 'Restart') targetAttr = 'Restart';
 
       const row = this.element.querySelector(`[data-gesture="${targetAttr}"]`);
       if (row) {
