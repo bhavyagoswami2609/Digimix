@@ -184,6 +184,7 @@ export class StageScreen implements ScreenComponent {
                 <div class="deck-controls-row">
                   <button class="btn-play-a" id="btn-play-a">Play</button>
                   <button id="btn-cue-a">Cue</button>
+                  <button id="btn-hotcue-a" class="btn-hotcue">Hot Cue</button>
                   <button id="btn-sync-a">Sync</button>
                   <button id="btn-half-a">Half</button>
                   <button id="btn-double-a">Double</button>
@@ -213,6 +214,7 @@ export class StageScreen implements ScreenComponent {
                 <div class="deck-controls-row">
                   <button class="btn-play-b" id="btn-play-b">Play</button>
                   <button id="btn-cue-b">Cue</button>
+                  <button id="btn-hotcue-b" class="btn-hotcue">Hot Cue</button>
                   <button id="btn-sync-b">Sync</button>
                   <button id="btn-half-b">Half</button>
                   <button id="btn-double-b">Double</button>
@@ -467,6 +469,24 @@ export class StageScreen implements ScreenComponent {
     // W: Deck A faster
     else if (key === 'W') {
       appStore.setNudge('A', 'faster', true);
+    }
+    // E: Deck A Hot Cue (jump or set)
+    else if (key === 'E') {
+      const state = appStore.getState().decks.A;
+      if (state.hotCueSec === null || e.shiftKey) {
+        appStore.setHotCue('A');
+      } else {
+        appStore.jumpHotCue('A');
+      }
+    }
+    // I: Deck B Hot Cue (jump or set)
+    else if (key === 'I') {
+      const state = appStore.getState().decks.B;
+      if (state.hotCueSec === null || e.shiftKey) {
+        appStore.setHotCue('B');
+      } else {
+        appStore.jumpHotCue('B');
+      }
     }
     // O: Deck B slower
     else if (key === 'O') {

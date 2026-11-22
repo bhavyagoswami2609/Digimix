@@ -4,6 +4,8 @@ import { DeckId } from '../app/store.ts';
 export type TriggerAction =
   | { type: 'play_pause'; deckId: DeckId }
   | { type: 'cue'; deckId: DeckId }
+  | { type: 'set_hotcue'; deckId: DeckId }
+  | { type: 'jump_hotcue'; deckId: DeckId }
   | { type: 'help_toggle' };
 
 export interface TriggerState {
@@ -53,11 +55,11 @@ export class TriggerDetector {
     }
 
     const elapsed = now - this.holdStartTime;
-    const progress = Math.min(1.0, elapsed / requiredHoldTimeMs);
+    const progress = requiredHoldTimeMs === 0 ? 1.0 : Math.min(1.0, elapsed / requiredHoldTimeMs);
 
-    if (elapsed >= requiredHoldTimeMs) {
+    if (requiredHoldTimeMs === 0 || elapsed >= requiredHoldTimeMs) {
       this.fired = true;
-      this.cooldownUntilTime = now + CONTROL_CONFIG.TRIGGER_COOLDOWN_MS;
+      this.cooldownUntilTime = now + (requiredHoldTimeMs === 0 ? 350 : CONTROL_CONFIG.TRIGGER_COOLDOWN_MS);
       return { hasFired: true, action: this.activeAction, progress: 1.0 };
     }
 

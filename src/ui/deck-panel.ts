@@ -51,6 +51,19 @@ export class DeckPanelUI {
       appStore.triggerCue(this.deckId);
     });
 
+    // 2b. Hot Cue (Sets if empty, jumps & plays if already set)
+    const btnHotcue = this.container.querySelector(`#btn-hotcue-${this.deckId.toLowerCase()}`) as HTMLButtonElement | null;
+    if (btnHotcue) {
+      btnHotcue.addEventListener('click', () => {
+        const state = appStore.getState().decks[this.deckId];
+        if (state.hotCueSec === null) {
+          appStore.setHotCue(this.deckId);
+        } else {
+          appStore.jumpHotCue(this.deckId);
+        }
+      });
+    }
+
     // 3. Sync
     const btnSync = this.container.querySelector(`#btn-sync-${this.deckId.toLowerCase()}`) as HTMLButtonElement;
     btnSync.addEventListener('click', () => {
@@ -156,16 +169,18 @@ export class DeckPanelUI {
     const currentPos = node.getCurrentPosition();
     const progress = duration > 0 ? currentPos / duration : 0;
 
+    const state = appStore.getState().decks[this.deckId];
+    const hotCueProgress = (state.hotCueSec !== null && duration > 0) ? state.hotCueSec / duration : null;
+
     // Draw overview waveform
-    drawOverviewWaveform(this.overviewCanvas, peaks, progress, this.deckColor);
+    drawOverviewWaveform(this.overviewCanvas, peaks, progress, this.deckColor, hotCueProgress);
 
     // Draw beat view waveform (~8s window)
-    const state = appStore.getState().decks[this.deckId];
     const beatLines = state.baseBpm
       ? getVisibleBeatLines(currentPos, 8.0, state.baseBpm, state.firstBeatOffsetSec)
       : [];
 
-    drawBeatViewWaveform(this.beatviewCanvas, buffer, currentPos, 8.0, beatLines, this.deckColor);
+    drawBeatViewWaveform(this.beatviewCanvas, buffer, currentPos, 8.0, beatLines, this.deckColor, state.hotCueSec);
   }
 
   update(deckState: DeckState) {
@@ -187,6 +202,18 @@ export class DeckPanelUI {
     const btnPlay = this.container.querySelector(`#btn-play-${this.deckId.toLowerCase()}`) as HTMLButtonElement | null;
     if (btnPlay) {
       btnPlay.textContent = deckState.isPlaying ? 'Pause' : 'Play';
+    }
+
+    // 3b. Hot Cue button state
+    const btnHotcue = this.container.querySelector(`#btn-hotcue-${this.deckId.toLowerCase()}`) as HTMLButtonElement | null;
+    if (btnHotcue) {
+      if (deckState.hotCueSec !== null) {
+        btnHotcue.classList.add('has-hotcue');
+        btnHotcue.textContent = 'Cue 1';
+      } else {
+        btnHotcue.classList.remove('has-hotcue');
+        btnHotcue.textContent = 'Hot Cue';
+      }
     }
 
     // 4. BPM & Tempo display

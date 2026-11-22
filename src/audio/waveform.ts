@@ -54,7 +54,8 @@ export function drawOverviewWaveform(
   canvas: HTMLCanvasElement,
   peaks: WaveformPeaks | null,
   progress: number, // 0 to 1
-  deckColor: string
+  deckColor: string,
+  hotCueProgress?: number | null
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -109,6 +110,21 @@ export function drawOverviewWaveform(
   // 3. Playhead (2px in text color #ECE9E4)
   ctx.fillStyle = '#ECE9E4';
   ctx.fillRect(Math.floor(playheadX) - 1, 0, 2, h);
+
+  // 4. Hot Cue Marker (bright cyan flag with '1')
+  if (hotCueProgress !== undefined && hotCueProgress !== null && hotCueProgress >= 0 && hotCueProgress <= 1) {
+    const cueX = Math.floor(hotCueProgress * w);
+    ctx.fillStyle = '#00E5FF';
+    ctx.fillRect(cueX - 1, 0, 2, h);
+    ctx.beginPath();
+    ctx.moveTo(cueX, 0);
+    ctx.lineTo(cueX + 8, 0);
+    ctx.lineTo(cueX, 8);
+    ctx.fill();
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 8px monospace';
+    ctx.fillText('1', cueX + 1, 7);
+  }
 }
 
 export function drawBeatViewWaveform(
@@ -117,7 +133,8 @@ export function drawBeatViewWaveform(
   currentPositionSec: number,
   windowDurationSec: number, // ~8s
   beatLines: BeatGridLine[],
-  deckColor: string
+  deckColor: string,
+  hotCueSec?: number | null
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -197,4 +214,21 @@ export function drawBeatViewWaveform(
   // Fixed center playhead (2px in text color #ECE9E4)
   ctx.fillStyle = '#ECE9E4';
   ctx.fillRect(centerX - 1, 0, 2, h);
+
+  // Hot Cue Marker on scrolling view
+  if (hotCueSec !== undefined && hotCueSec !== null) {
+    const cueX = ((hotCueSec - startTime) / windowDurationSec) * w;
+    if (cueX >= 0 && cueX <= w) {
+      ctx.fillStyle = '#00E5FF';
+      ctx.fillRect(Math.floor(cueX) - 1, 0, 2, h);
+      ctx.beginPath();
+      ctx.moveTo(cueX, 0);
+      ctx.lineTo(cueX + 10, 0);
+      ctx.lineTo(cueX, 10);
+      ctx.fill();
+      ctx.fillStyle = '#000000';
+      ctx.font = 'bold 9px monospace';
+      ctx.fillText('1', cueX + 1, 8);
+    }
+  }
 }

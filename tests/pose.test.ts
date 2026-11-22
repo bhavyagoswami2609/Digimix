@@ -122,6 +122,48 @@ describe('Pose Recognition', () => {
     expect(classifyInstantPose(lms)).toBe('peace');
   });
 
+  it('recognizes Spider-Man thumb inward for setting hot cue', () => {
+    const lms = createSyntheticLandmarks({
+      thumbTip: { x: 0.50, y: 0.52 }, // thumb tucked inward over middle/ring
+      fingers: {
+        index: { ext: true },
+        middle: { ext: false },
+        ring: { ext: false },
+        pinky: { ext: true }
+      }
+    });
+
+    expect(classifyInstantPose(lms)).toBe('spiderman_inward');
+  });
+
+  it('recognizes Spider-Man thumb outward for jumping to hot cue', () => {
+    const lms = createSyntheticLandmarks({
+      thumbTip: { x: 0.25, y: 0.50 }, // thumb extended outward to the side
+      fingers: {
+        index: { ext: true },
+        middle: { ext: false },
+        ring: { ext: false },
+        pinky: { ext: true }
+      }
+    });
+
+    expect(classifyInstantPose(lms)).toBe('spiderman_outward');
+  });
+
+  it('recognizes Open Hand when all four fingers are extended', () => {
+    const lms = createSyntheticLandmarks({
+      thumbTip: { x: 0.35, y: 0.40 }, // thumb extended
+      fingers: {
+        index: { ext: true },
+        middle: { ext: true },
+        ring: { ext: true },
+        pinky: { ext: true }
+      }
+    });
+
+    expect(classifyInstantPose(lms)).toBe('open');
+  });
+
   it('recognizes Index Pinch when thumb touches index and other fingers extended', () => {
     const lms = createSyntheticLandmarks({
       thumbTip: { x: 0.45, y: 0.30 },

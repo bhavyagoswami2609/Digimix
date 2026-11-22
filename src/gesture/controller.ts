@@ -134,7 +134,7 @@ export class GestureController {
     trigger: TriggerDetector,
     now: number,
     sensitivity: number,
-    holdTimeMs: number,
+    _holdTimeMs: number,
     videoWidth: number,
     videoHeight: number,
     stageWidth: number,
@@ -253,29 +253,39 @@ export class GestureController {
       }
     }
 
-    // B. Triggers (Thumbs up & Fist)
-    if (pose === 'thumbs_up') {
-      poseNameLabel = appStore.getState().decks[deckId].isPlaying ? 'Pause' : 'Play';
-      const trRes = trigger.update(true, { type: 'play_pause', deckId }, now, holdTimeMs);
+    // B. Triggers: Instantaneous Play, Cue, and Hot Cues
+    if (pose === 'open' || pose === 'thumbs_up') {
+      const isPlaying = appStore.getState().decks[deckId].isPlaying;
+      poseNameLabel = isPlaying ? 'Pause' : 'Play';
+      const trRes = trigger.update(true, { type: 'play_pause', deckId }, now, 0);
       triggerProgress = trRes.progress;
       if (trRes.hasFired) {
-        const isPlaying = appStore.getState().decks[deckId].isPlaying;
         appStore.setTransportPlaying(deckId, !isPlaying);
+      }
+    } else if (pose === 'spiderman_inward') {
+      poseNameLabel = 'Set Cue';
+      const trRes = trigger.update(true, { type: 'set_hotcue', deckId }, now, 0);
+      triggerProgress = trRes.progress;
+      if (trRes.hasFired) {
+        appStore.setHotCue(deckId);
+      }
+    } else if (pose === 'spiderman_outward') {
+      poseNameLabel = 'Hot Cue';
+      const trRes = trigger.update(true, { type: 'jump_hotcue', deckId }, now, 0);
+      triggerProgress = trRes.progress;
+      if (trRes.hasFired) {
+        appStore.jumpHotCue(deckId);
       }
     } else if (pose === 'fist') {
       poseNameLabel = 'Cue';
-      const trRes = trigger.update(true, { type: 'cue', deckId }, now, holdTimeMs);
+      const trRes = trigger.update(true, { type: 'cue', deckId }, now, 0);
       triggerProgress = trRes.progress;
       if (trRes.hasFired) {
         appStore.triggerCue(deckId);
       }
     } else {
-      // Neither trigger pose
-      trigger.update(false, { type: 'cue', deckId }, now, holdTimeMs);
-    }
-
-    if (!poseNameLabel && pose === 'open') {
-      poseNameLabel = null;
+      // No trigger pose active
+      trigger.update(false, { type: 'cue', deckId }, now, 0);
     }
 
     if (!poseNameLabel && !valueChipText) {

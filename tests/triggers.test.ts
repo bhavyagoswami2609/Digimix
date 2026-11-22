@@ -51,4 +51,20 @@ describe('Trigger Detector', () => {
     const startAgain = detector.update(true, action, t + 1400, 500);
     expect(startAgain.progress).toBeGreaterThanOrEqual(0);
   });
+
+  it('fires instantaneous triggers on the very first frame without delay', () => {
+    const detector = new TriggerDetector();
+    const t0 = 1000;
+    const hotCueAction = { type: 'set_hotcue' as const, deckId: 'A' as const };
+
+    // Should fire on frame 1 at t0
+    const res = detector.update(true, hotCueAction, t0, 0);
+    expect(res.hasFired).toBe(true);
+    expect(res.action?.type).toBe('set_hotcue');
+    expect(res.progress).toBe(1.0);
+
+    // Frame 2 at t0 + 16ms still holding -> does not re-fire
+    const res2 = detector.update(true, hotCueAction, t0 + 16, 0);
+    expect(res2.hasFired).toBe(false);
+  });
 });

@@ -27,6 +27,7 @@ export class DeckAudioNode {
   private rate = 1.0; // actual playback rate (including tempo and nudge)
   private baseRate = 1.0; // playback rate from tempo curve without nudge
   private cuePoint = 0; // cue point track seconds
+  private hotCuePoint: number | null = null;
   private isNudgingSlower = false;
   private isNudgingFaster = false;
 
@@ -87,6 +88,7 @@ export class DeckAudioNode {
     this.buffer = buffer;
     this.offset = 0;
     this.cuePoint = 0;
+    this.hotCuePoint = null;
     this.startTime = 0;
     if (buffer) {
       this.peaks = computeWaveformPeaks(buffer, targetBuckets);
@@ -155,6 +157,31 @@ export class DeckAudioNode {
     this.stopInternal();
     this.isPlaying = false;
     this.offset = this.cuePoint;
+  }
+
+  setHotCue(): number {
+    const pos = this.getCurrentPosition();
+    this.hotCuePoint = pos;
+    return pos;
+  }
+
+  jumpToHotCue() {
+    if (this.hotCuePoint === null) {
+      this.setHotCue();
+      return;
+    }
+    const target = this.hotCuePoint;
+    this.offset = target;
+    if (this.isPlaying) {
+      this.stopInternal();
+      this.startSourceAt(target);
+    } else {
+      this.play();
+    }
+  }
+
+  getHotCue(): number | null {
+    return this.hotCuePoint;
   }
 
   seek(positionSec: number) {

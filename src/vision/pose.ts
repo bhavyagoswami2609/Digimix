@@ -4,6 +4,8 @@ import { NormalizedLandmark } from './landmarks.ts';
 export type DetectedPoseName =
   | 'thumbs_up'
   | 'fist'
+  | 'spiderman_inward'
+  | 'spiderman_outward'
   | 'point'
   | 'peace'
   | 'pinch_index'
@@ -118,7 +120,20 @@ export function classifyInstantPose(
     return 'fist';
   }
 
-  // 3. Point:
+  // 3. Spider-Man signs (Hot Cue):
+  // Index and pinky extended, middle and ring curled
+  if (extended.index && extended.pinky && curled.middle && curled.ring) {
+    // Inward: thumb is folded in across the curled middle/ring fingers (close to middle base landmark 9)
+    // Outward: thumb is extended outward to the side (web shooter / ILY sign)
+    const distThumbToMidBase = Math.hypot(thumbTip.x - midBase.x, thumbTip.y - midBase.y) / s;
+    if (distThumbToMidBase < 0.65) {
+      return 'spiderman_inward';
+    } else {
+      return 'spiderman_outward';
+    }
+  }
+
+  // 4. Point:
   // "Index extended, middle, ring and pinky curled, and d(index) above the pinch release value. The thumb may rest against the curled fingers"
   if (
     extended.index &&
@@ -218,9 +233,18 @@ export class DebouncedPoseDetector {
       }
     }
 
+    const isInstantTrigger = (
+      raw === 'open' ||
+      raw === 'spiderman_inward' ||
+      raw === 'spiderman_outward' ||
+      raw === 'fist' ||
+      raw === 'thumbs_up'
+    );
+    const requiredFrames = isInstantTrigger ? 1 : POSE_CONFIG.POSE_CONFIRM_FRAMES;
+
     if (raw === this.candidatePose) {
       this.candidateCount++;
-      if (this.candidateCount >= POSE_CONFIG.POSE_CONFIRM_FRAMES) {
+      if (this.candidateCount >= requiredFrames) {
         this.activePose = raw;
         this.candidateCount = 0;
         this.absentCount = 0;
@@ -228,6 +252,11 @@ export class DebouncedPoseDetector {
     } else {
       this.candidatePose = raw;
       this.candidateCount = 1;
+      if (requiredFrames === 1) {
+        this.activePose = raw;
+        this.candidateCount = 0;
+        this.absentCount = 0;
+      }
     }
 
     return this.activePose;

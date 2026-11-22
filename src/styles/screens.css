@@ -540,6 +540,12 @@
   border-color: var(--color-deck-b);
 }
 
+.btn-hotcue.has-hotcue {
+  background-color: rgba(0, 229, 255, 0.15);
+  border-color: #00E5FF;
+  color: #00E5FF;
+}
+
 /* Control readouts */
 .control-readouts-layer {
   position: absolute;

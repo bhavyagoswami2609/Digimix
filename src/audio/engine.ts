@@ -85,6 +85,19 @@ export class AudioEngine {
     return id === 'A' ? this.deckA : this.deckB;
   }
 
+  setHotCue(id: 'A' | 'B'): number | null {
+    const deck = id === 'A' ? this.deckA : this.deckB;
+    return deck ? deck.setHotCue() : null;
+  }
+
+  jumpHotCue(id: 'A' | 'B') {
+    this.ensureStartupRamp();
+    const deck = id === 'A' ? this.deckA : this.deckB;
+    if (deck) {
+      deck.jumpToHotCue();
+    }
+  }
+
   // --- Track Loading and Decoding ---
 
   async loadTrackFile(deckId: 'A' | 'B', file: File): Promise<AudioBuffer> {
@@ -283,6 +296,14 @@ export class AudioEngine {
 
     if (deck.isCueing && !prevDeck.isCueing) {
       node.cue();
+    }
+
+    if (deck.hotCueAction === 'set' && prevDeck.hotCueAction !== 'set') {
+      const pos = node.setHotCue();
+      appStore.setHotCuePosition(id, pos);
+    } else if (deck.hotCueAction === 'jump' && prevDeck.hotCueAction !== 'jump') {
+      this.ensureStartupRamp();
+      node.jumpToHotCue();
     }
   }
 

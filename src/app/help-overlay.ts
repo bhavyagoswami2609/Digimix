@@ -69,13 +69,23 @@ export class HelpGesturesOverlay {
             </tr>
             <tr data-gesture="Play_Pause">
               <td>Play or pause</td>
-              <td>Thumbs up, hold half a second</td>
-              <td>Toggles the deck</td>
+              <td>Open hand wide (all 5 fingers) or Thumbs up</td>
+              <td>Starts or pauses instantly</td>
+            </tr>
+            <tr data-gesture="Set_HotCue">
+              <td>Set Hot Cue</td>
+              <td>Spider-Man sign, thumb inward</td>
+              <td>Places Hot Cue 1 at current beat</td>
+            </tr>
+            <tr data-gesture="Jump_HotCue">
+              <td>Jump to Hot Cue</td>
+              <td>Spider-Man sign, thumb outward</td>
+              <td>Jumps to Hot Cue 1 and plays</td>
             </tr>
             <tr data-gesture="Cue">
               <td>Cue</td>
-              <td>Fist, hold half a second</td>
-              <td>Returns to the cue point</td>
+              <td>Fist</td>
+              <td>Returns to cue point instantly</td>
             </tr>
             <tr data-gesture="Reset">
               <td>Reset</td>

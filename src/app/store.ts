@@ -13,6 +13,8 @@ export interface DeckState {
   activeControl: DeckControl | null;
   isPlaying: boolean;
   isCueing: boolean;
+  hotCueSec: number | null;
+  hotCueAction: 'set' | 'jump' | null;
   isNudgingSlower: boolean;
   isNudgingFaster: boolean;
   file: {
@@ -103,6 +105,8 @@ function createInitialDeck(): DeckState {
     activeControl: null,
     isPlaying: false,
     isCueing: false,
+    hotCueSec: null,
+    hotCueAction: null,
     isNudgingSlower: false,
     isNudgingFaster: false,
     file: null,
@@ -279,6 +283,82 @@ class Store {
       };
       this.notify();
     }, 100);
+  }
+
+  setHotCue(deckId: DeckId) {
+    const deck = this.state.decks[deckId];
+    this.state = {
+      ...this.state,
+      decks: {
+        ...this.state.decks,
+        [deckId]: {
+          ...deck,
+          hotCueAction: 'set'
+        }
+      }
+    };
+    this.notify();
+    setTimeout(() => {
+      this.state = {
+        ...this.state,
+        decks: {
+          ...this.state.decks,
+          [deckId]: {
+            ...this.state.decks[deckId],
+            hotCueAction: null
+          }
+        }
+      };
+      this.notify();
+    }, 50);
+  }
+
+  jumpHotCue(deckId: DeckId) {
+    const deck = this.state.decks[deckId];
+    if (deck.hotCueSec === null) {
+      this.setHotCue(deckId);
+      return;
+    }
+    this.state = {
+      ...this.state,
+      decks: {
+        ...this.state.decks,
+        [deckId]: {
+          ...deck,
+          isPlaying: true,
+          currentPositionSec: deck.hotCueSec,
+          hotCueAction: 'jump'
+        }
+      }
+    };
+    this.notify();
+    setTimeout(() => {
+      this.state = {
+        ...this.state,
+        decks: {
+          ...this.state.decks,
+          [deckId]: {
+            ...this.state.decks[deckId],
+            hotCueAction: null
+          }
+        }
+      };
+      this.notify();
+    }, 50);
+  }
+
+  setHotCuePosition(deckId: DeckId, posSec: number | null) {
+    this.state = {
+      ...this.state,
+      decks: {
+        ...this.state.decks,
+        [deckId]: {
+          ...this.state.decks[deckId],
+          hotCueSec: posSec
+        }
+      }
+    };
+    this.notify();
   }
 
   setDeckFile(deckId: DeckId, file: { name: string; durationSec: number; buffer: AudioBuffer | null } | null) {
