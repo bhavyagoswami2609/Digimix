@@ -1,5 +1,5 @@
 import { appStore, DeckId } from '../app/store.ts';
-import { AUDIO_CONFIG, CONTROL_CONFIG } from '../config.ts';
+import { AUDIO_CONFIG, CONTROL_CONFIG, VISION_CONFIG } from '../config.ts';
 import { DebouncedPoseDetector, DetectedPoseName } from '../vision/pose.ts';
 import { TrackedHand } from '../vision/tracker-client.ts';
 import { GrabController, ControlledTarget } from './grab.ts';
@@ -24,6 +24,7 @@ export class GestureController {
 
   // Active control arbitration: controlKey -> handId
   private activeArbitrations: Map<string, number> = new Map();
+  private handLastSeenTimes: Map<number, number> = new Map();
 
   // Help gesture tracking
   private helpHoldStartTime = 0;
@@ -48,11 +49,18 @@ export class GestureController {
     // Check help gesture first (both hands open, upper 60% of frame, held 1200ms)
     this.processHelpGesture(hands, now, tuning.holdTimeMs);
 
-    // Clean up detectors for hands that disappeared
+    // Track present hands and only clean up after full disappearance timeout (Section 5: 250ms grace)
     const presentHandIds = new Set(hands.map((h) => h.id));
-    for (const handId of this.handDetectors.keys()) {
+    for (const hand of hands) {
+      this.handLastSeenTimes.set(hand.id, now);
+    }
+
+    for (const handId of Array.from(this.handDetectors.keys())) {
       if (!presentHandIds.has(handId)) {
-        this.releaseHand(handId);
+        const lastSeen = this.handLastSeenTimes.get(handId) ?? 0;
+        if (now - lastSeen > VISION_CONFIG.HAND_LOST_TIMEOUT_MS) {
+          this.releaseHand(handId);
+        }
       }
     }
 
@@ -391,6 +399,7 @@ export class GestureController {
   }
 
   private releaseHand(handId: number) {
+    this.handLastSeenTimes.delete(handId);
     this.handDetectors.delete(handId);
     this.handTriggers.delete(handId);
     const grab = this.handGrabs.get(handId);

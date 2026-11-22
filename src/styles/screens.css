@@ -731,12 +731,14 @@
 /* Pose chips in stage */
 .pose-chip-container {
   position: absolute;
+  top: 0;
+  left: 0;
   display: flex;
   align-items: center;
   gap: var(--space-4);
   pointer-events: none;
   z-index: 6;
-  transform: translate(-50%, -100%);
+  will-change: transform;
 }
 
 .pose-chip {

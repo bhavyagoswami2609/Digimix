@@ -136,6 +136,34 @@ describe('Pose Recognition', () => {
     expect(classifyInstantPose(lms)).toBe('pinch_index');
   });
 
+  it('keeps engaged pinch active until distance exceeds release threshold (0.45)', () => {
+    // Engaged pinch where middle finger is close (margin < 0.15), but index d <= 0.45
+    const lms = createSyntheticLandmarks({
+      thumbTip: { x: 0.45, y: 0.30 },
+      fingers: {
+        index: { ext: true, tipX: 0.45, tipY: 0.38 }, // d ≈ 0.27 (still <= 0.45)
+        middle: { ext: true, tipX: 0.46, tipY: 0.35 }, // middle finger close
+        ring: { ext: true, tipX: 0.55, tipY: 0.18 },
+        pinky: { ext: true, tipX: 0.60, tipY: 0.22 }
+      }
+    });
+
+    // When already engaged, stays engaged!
+    expect(classifyInstantPose(lms, 'pinch_index')).toBe('pinch_index');
+
+    // When released past 0.45 (tipY = 0.50 => distance > 0.45)
+    const lmsReleased = createSyntheticLandmarks({
+      thumbTip: { x: 0.45, y: 0.30 },
+      fingers: {
+        index: { ext: true, tipX: 0.45, tipY: 0.50 }, // d > 0.45
+        middle: { ext: true, tipX: 0.50, tipY: 0.15 },
+        ring: { ext: true, tipX: 0.55, tipY: 0.18 },
+        pinky: { ext: true, tipX: 0.60, tipY: 0.22 }
+      }
+    });
+    expect(classifyInstantPose(lmsReleased, 'pinch_index')).not.toBe('pinch_index');
+  });
+
   it('distinguishes near misses: fist vs pinch', () => {
     // If middle, ring, pinky are curled, pinch requires at least 2 other fingers NOT curled
     const lms = createSyntheticLandmarks({

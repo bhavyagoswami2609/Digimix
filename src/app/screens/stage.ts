@@ -33,6 +33,8 @@ export class StageScreen implements ScreenComponent {
   private tuningPanel: TuningPanel | null = null;
   private videoEl: HTMLVideoElement | null = null;
   private canvasEl: HTMLCanvasElement | null = null;
+  private cachedStageWidth = 1440;
+  private cachedStageHeight = 800;
 
   private onKeyDownBound = this.handleKeyDown.bind(this);
   private onKeyUpBound = this.handleKeyUp.bind(this);
@@ -290,7 +292,9 @@ export class StageScreen implements ScreenComponent {
     if (!this.canvasEl || !this.element) return;
     const viewport = this.element.querySelector('#stage-viewport') as HTMLElement | null;
     if (viewport) {
-      this.handOverlay?.resize(viewport.clientWidth, viewport.clientHeight);
+      this.cachedStageWidth = viewport.clientWidth || 1440;
+      this.cachedStageHeight = viewport.clientHeight || 800;
+      this.handOverlay?.resize(this.cachedStageWidth, this.cachedStageHeight);
     }
   }
 
@@ -318,9 +322,8 @@ export class StageScreen implements ScreenComponent {
 
   private onHandsTracked(hands: TrackedHand[], vw: number, vh: number) {
     if (!this.canvasEl) return;
-    const viewport = this.element?.querySelector('#stage-viewport') as HTMLElement | null;
-    const sw = viewport ? viewport.clientWidth : 1440;
-    const sh = viewport ? viewport.clientHeight : 800;
+    const sw = this.cachedStageWidth;
+    const sh = this.cachedStageHeight;
 
     const now = performance.now();
     const visuals = gestureController.processFrame(hands, now, vw, vh, sw, sh);

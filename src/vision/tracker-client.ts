@@ -21,9 +21,11 @@ export class TrackerClient {
   private videoEl: HTMLVideoElement | null = null;
   private isRunning = false;
   private isWorkerBusy = false;
+  private hasPendingFrame = false;
   private nextHandId = 1;
 
-  private trackedHands: TrackedHand[] = [];
+  private activeVisibleHands: TrackedHand[] = [];
+  private persistentHands: Map<number, TrackedHand> = new Map();
   private onTrackCallback: TrackingCallback | null = null;
 
   // Latency & FPS meter
@@ -55,15 +57,18 @@ export class TrackerClient {
     this.videoEl = videoElement;
     this.onTrackCallback = onTrack;
     this.isRunning = true;
+    this.hasPendingFrame = false;
     this.scheduleNextFrame();
   }
 
   stop() {
     this.isRunning = false;
     this.isWorkerBusy = false;
+    this.hasPendingFrame = false;
     this.videoEl = null;
     this.onTrackCallback = null;
-    this.trackedHands = [];
+    this.activeVisibleHands = [];
+    this.persistentHands.clear();
   }
 
   private scheduleNextFrame() {
@@ -72,13 +77,21 @@ export class TrackerClient {
     if ('requestVideoFrameCallback' in this.videoEl) {
       // Chrome / Safari modern video frame callback
       (this.videoEl as unknown as { requestVideoFrameCallback: (cb: () => void) => void }).requestVideoFrameCallback(() => {
-        this.processFrame();
+        if (this.isWorkerBusy) {
+          this.hasPendingFrame = true;
+        } else {
+          this.processFrame();
+        }
         this.scheduleNextFrame();
       });
     } else {
       // Fallback requestAnimationFrame
       requestAnimationFrame(() => {
-        this.processFrame();
+        if (this.isWorkerBusy) {
+          this.hasPendingFrame = true;
+        } else {
+          this.processFrame();
+        }
         this.scheduleNextFrame();
       });
     }
@@ -97,7 +110,17 @@ export class TrackerClient {
     this.isWorkerBusy = true;
 
     try {
-      const bitmap = await createImageBitmap(this.videoEl);
+      const vw = this.videoEl.videoWidth || 640;
+      const vh = this.videoEl.videoHeight || 360;
+      const targetWidth = Math.min(vw, 640);
+      const targetHeight = Math.round((targetWidth / vw) * vh);
+
+      const bitmap = await createImageBitmap(this.videoEl, {
+        resizeWidth: targetWidth,
+        resizeHeight: targetHeight,
+        resizeQuality: 'low'
+      });
+
       this.worker.postMessage(
         {
           bitmap,
@@ -144,10 +167,16 @@ export class TrackerClient {
 
       // Process hands
       const rawHandsLandmarks: NormalizedLandmark[][] = data.landmarks || [];
-      this.updateTrackedHands(rawHandsLandmarks, now);
+      const visibleHands = this.updateTrackedHands(rawHandsLandmarks, now);
 
       if (this.onTrackCallback && this.videoEl) {
-        this.onTrackCallback(this.trackedHands, this.videoEl.videoWidth, this.videoEl.videoHeight);
+        this.onTrackCallback(visibleHands, this.videoEl.videoWidth, this.videoEl.videoHeight);
+      }
+
+      // If a frame arrived while worker was busy, immediately process the latest frame
+      if (this.hasPendingFrame && this.isRunning && this.videoEl && this.videoEl.readyState >= 2) {
+        this.hasPendingFrame = false;
+        this.processFrame();
       }
     }
   }
@@ -159,53 +188,61 @@ export class TrackerClient {
     return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
-  private updateTrackedHands(rawHandsLandmarks: NormalizedLandmark[][], now: number) {
+  private updateTrackedHands(rawHandsLandmarks: NormalizedLandmark[][], now: number): TrackedHand[] {
     const tuning = appStore.getState().tuning;
     const restZoneThresholdY = 1.0 - tuning.restZoneHeight;
 
-    // 1. Remove expired hands (> 250 ms)
-    this.trackedHands = this.trackedHands.filter((h) => now - h.lastSeenTime <= VISION_CONFIG.HAND_LOST_TIMEOUT_MS);
+    // 1. Remove expired hands from persistent storage (> 250 ms)
+    for (const [id, hand] of this.persistentHands.entries()) {
+      if (now - hand.lastSeenTime > VISION_CONFIG.HAND_LOST_TIMEOUT_MS) {
+        this.persistentHands.delete(id);
+      }
+    }
 
-    // 2. Match newly detected hands to existing hands by nearest palm center
+    // 2. Prepare candidate new detections
     const unmatchedNew = rawHandsLandmarks.map((lms) => ({
       landmarks: lms,
       palmCenter: calculatePalmCenter(lms)
     }));
 
-    const matchedHands: TrackedHand[] = [];
+    const matchedThisFrame: TrackedHand[] = [];
+    const availablePersistent = Array.from(this.persistentHands.values());
 
     for (const newHand of unmatchedNew) {
       let nearestDist = Infinity;
+      let matchedHand: TrackedHand | null = null;
       let matchedIdx = -1;
 
-      for (let i = 0; i < this.trackedHands.length; i++) {
-        const existing = this.trackedHands[i];
+      for (let i = 0; i < availablePersistent.length; i++) {
+        const existing = availablePersistent[i];
         const dx = newHand.palmCenter.x - existing.smoothedPalmCenter.x;
         const dy = newHand.palmCenter.y - existing.smoothedPalmCenter.y;
         const dist = Math.hypot(dx, dy);
 
-        if (dist < nearestDist && dist < 0.35) {
+        if (dist < nearestDist && dist < 0.45) {
           nearestDist = dist;
+          matchedHand = existing;
           matchedIdx = i;
         }
       }
 
-      if (matchedIdx !== -1) {
-        const existing = this.trackedHands.splice(matchedIdx, 1)[0];
-        existing.rawLandmarks = newHand.landmarks;
-        existing.rawPalmCenter = newHand.palmCenter;
-        existing.lastSeenTime = now;
+      if (matchedHand && matchedIdx !== -1) {
+        availablePersistent.splice(matchedIdx, 1);
+        matchedHand.rawLandmarks = newHand.landmarks;
+        matchedHand.rawPalmCenter = newHand.palmCenter;
+        matchedHand.lastSeenTime = now;
 
         // Apply One Euro filter in frame fractions per second
-        existing.filter.setParams(tuning.smoothing, tuning.responsiveness);
-        const smoothed = existing.filter.filter(newHand.palmCenter.x, newHand.palmCenter.y, now / 1000);
-        existing.smoothedPalmCenter = smoothed;
+        matchedHand.filter.setParams(tuning.smoothing, tuning.responsiveness);
+        const smoothed = matchedHand.filter.filter(newHand.palmCenter.x, newHand.palmCenter.y, now / 1000);
+        matchedHand.smoothedPalmCenter = smoothed;
 
         // Deck assignment with dead band
-        existing.deckId = assignDeck(smoothed.x, existing.deckId);
-        existing.isInRestZone = smoothed.y >= restZoneThresholdY;
+        matchedHand.deckId = assignDeck(smoothed.x, matchedHand.deckId);
+        matchedHand.isInRestZone = smoothed.y >= restZoneThresholdY;
 
-        matchedHands.push(existing);
+        this.persistentHands.set(matchedHand.id, matchedHand);
+        matchedThisFrame.push(matchedHand);
       } else {
         // New hand
         const filter = new OneEuroPoint2D(tuning.smoothing, tuning.responsiveness);
@@ -213,7 +250,7 @@ export class TrackerClient {
         const deckId = assignDeck(smoothed.x, null);
         const isInRestZone = smoothed.y >= restZoneThresholdY;
 
-        matchedHands.push({
+        const newTrackedHand: TrackedHand = {
           id: this.nextHandId++,
           rawLandmarks: newHand.landmarks,
           rawPalmCenter: newHand.palmCenter,
@@ -222,16 +259,19 @@ export class TrackerClient {
           deckId,
           isInRestZone,
           filter
-        });
+        };
+
+        this.persistentHands.set(newTrackedHand.id, newTrackedHand);
+        matchedThisFrame.push(newTrackedHand);
       }
     }
 
-    // Keep active hands (plus any hands still within 250ms disappearance grace window)
-    this.trackedHands = [...matchedHands, ...this.trackedHands];
+    this.activeVisibleHands = matchedThisFrame;
+    return this.activeVisibleHands;
   }
 
   getTrackedHands(): TrackedHand[] {
-    return this.trackedHands;
+    return this.activeVisibleHands;
   }
 }
 

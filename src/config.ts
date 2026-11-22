@@ -42,7 +42,7 @@ export const VISION_CONFIG = {
   DEADBAND_RIGHT: 0.53,
   ONE_EURO_DEFAULTS: {
     MIN_CUTOFF: 1.5,
-    BETA: 10,
+    BETA: 20,
     D_CUTOFF: 1.0
   },
   MODEL_PATH: '/models/hand_landmarker.task',

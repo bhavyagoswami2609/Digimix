@@ -139,6 +139,17 @@ export function classifyInstantPose(
   // 5. Pinch (index, middle, ring or pinky):
   // "The nearest fingertip to the thumb tip has d below 0.28 to engage and stays engaged until d rises above 0.45.
   // The second nearest fingertip must be at least 0.15 farther away. At least two of the other three fingers must not be curled"
+  const engageThreshold = POSE_CONFIG.PINCH_ENGAGE_DISTANCE; // 0.28
+  const releaseThreshold = POSE_CONFIG.PINCH_RELEASE_DISTANCE; // 0.45
+
+  // If already engaged in a pinch, it stays engaged until distance rises above release threshold (Section 6)
+  if (currentEngagedPinch) {
+    const engagedKey = currentEngagedPinch.replace('pinch_', '') as 'index' | 'middle' | 'ring' | 'pinky';
+    if (d[engagedKey] <= releaseThreshold) {
+      return currentEngagedPinch;
+    }
+  }
+
   const pinchCandidates = [
     { name: 'pinch_index' as const, key: 'index' as const, d: d.index },
     { name: 'pinch_middle' as const, key: 'middle' as const, d: d.middle },
@@ -150,11 +161,7 @@ export function classifyInstantPose(
   const nearest = pinchCandidates[0];
   const secondNearest = pinchCandidates[1];
 
-  const engageThreshold = POSE_CONFIG.PINCH_ENGAGE_DISTANCE; // 0.28
-  const releaseThreshold = POSE_CONFIG.PINCH_RELEASE_DISTANCE; // 0.45
-
-  const isCurrentPinch = currentEngagedPinch === nearest.name;
-  const satisfiesDistance = isCurrentPinch ? nearest.d <= releaseThreshold : nearest.d <= engageThreshold;
+  const satisfiesDistance = nearest.d <= engageThreshold;
   const satisfiesMargin = secondNearest.d - nearest.d >= POSE_CONFIG.PINCH_MARGIN; // 0.15
 
   // "At least two of the other three fingers must not be curled"

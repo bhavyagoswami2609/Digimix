@@ -23,7 +23,7 @@ export class PoseChipRenderer {
       ` : '';
 
       html += `
-        <div class="pose-chip-container" style="left: ${Math.round(v.wristScreenX)}px; top: ${Math.round(v.wristScreenY)}px;">
+        <div class="pose-chip-container" style="transform: translate3d(${Math.round(v.wristScreenX)}px, ${Math.round(v.wristScreenY)}px, 0) translate(-50%, -100%);">
           ${v.poseName ? `<div class="pose-chip" style="position: relative;">${v.poseName}${progressSvg}</div>` : ''}
           ${v.valueChipText ? `<div class="value-chip">${v.valueChipText}</div>` : ''}
         </div>
