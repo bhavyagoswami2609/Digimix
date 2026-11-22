@@ -16,6 +16,8 @@ export interface TrackedHand {
 
 type TrackingCallback = (hands: TrackedHand[], videoWidth: number, videoHeight: number) => void;
 
+export type ActiveDeckQuery = (handId: number) => DeckId | null;
+
 export class TrackerClient {
   private worker: Worker | null = null;
   private videoEl: HTMLVideoElement | null = null;
@@ -27,6 +29,7 @@ export class TrackerClient {
   private activeVisibleHands: TrackedHand[] = [];
   private persistentHands: Map<number, TrackedHand> = new Map();
   private onTrackCallback: TrackingCallback | null = null;
+  private activeDeckQuery: ActiveDeckQuery | null = null;
 
   // Latency & FPS meter
   private latencyRingBuffer: number[] = new Array(60).fill(0);
@@ -188,9 +191,14 @@ export class TrackerClient {
     return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
+  setActiveDeckQuery(fn: ActiveDeckQuery) {
+    this.activeDeckQuery = fn;
+  }
+
   private updateTrackedHands(rawHandsLandmarks: NormalizedLandmark[][], now: number): TrackedHand[] {
     const tuning = appStore.getState().tuning;
     const restZoneThresholdY = 1.0 - tuning.restZoneHeight;
+    const MAX_MATCH_DIST = 0.28;
 
     // 1. Remove expired hands from persistent storage (> 250 ms)
     for (const [id, hand] of this.persistentHands.entries()) {
@@ -205,49 +213,86 @@ export class TrackerClient {
       palmCenter: calculatePalmCenter(lms)
     }));
 
-    const matchedThisFrame: TrackedHand[] = [];
     const availablePersistent = Array.from(this.persistentHands.values());
+    const matchedPairs: Array<{ newHand: (typeof unmatchedNew)[0]; existing: TrackedHand | null }> = [];
 
-    for (const newHand of unmatchedNew) {
+    // Optimal bipartite matching
+    if (unmatchedNew.length === 2 && availablePersistent.length >= 2) {
+      const n0 = unmatchedNew[0];
+      const n1 = unmatchedNew[1];
+      const p0 = availablePersistent[0];
+      const p1 = availablePersistent[1];
+
+      const d00 = Math.hypot(n0.palmCenter.x - p0.smoothedPalmCenter.x, n0.palmCenter.y - p0.smoothedPalmCenter.y);
+      const d11 = Math.hypot(n1.palmCenter.x - p1.smoothedPalmCenter.x, n1.palmCenter.y - p1.smoothedPalmCenter.y);
+
+      const d01 = Math.hypot(n0.palmCenter.x - p1.smoothedPalmCenter.x, n0.palmCenter.y - p1.smoothedPalmCenter.y);
+      const d10 = Math.hypot(n1.palmCenter.x - p0.smoothedPalmCenter.x, n1.palmCenter.y - p0.smoothedPalmCenter.y);
+
+      const costA = d00 * d00 + d11 * d11;
+      const costB = d01 * d01 + d10 * d10;
+
+      if (costA <= costB) {
+        matchedPairs.push({ newHand: n0, existing: d00 <= MAX_MATCH_DIST ? p0 : null });
+        matchedPairs.push({ newHand: n1, existing: d11 <= MAX_MATCH_DIST ? p1 : null });
+      } else {
+        matchedPairs.push({ newHand: n0, existing: d01 <= MAX_MATCH_DIST ? p1 : null });
+        matchedPairs.push({ newHand: n1, existing: d10 <= MAX_MATCH_DIST ? p0 : null });
+      }
+    } else if (unmatchedNew.length === 2 && availablePersistent.length === 1) {
+      const p0 = availablePersistent[0];
+      const d0 = Math.hypot(unmatchedNew[0].palmCenter.x - p0.smoothedPalmCenter.x, unmatchedNew[0].palmCenter.y - p0.smoothedPalmCenter.y);
+      const d1 = Math.hypot(unmatchedNew[1].palmCenter.x - p0.smoothedPalmCenter.x, unmatchedNew[1].palmCenter.y - p0.smoothedPalmCenter.y);
+
+      if (d0 <= d1) {
+        matchedPairs.push({ newHand: unmatchedNew[0], existing: d0 <= MAX_MATCH_DIST ? p0 : null });
+        matchedPairs.push({ newHand: unmatchedNew[1], existing: null });
+      } else {
+        matchedPairs.push({ newHand: unmatchedNew[0], existing: null });
+        matchedPairs.push({ newHand: unmatchedNew[1], existing: d1 <= MAX_MATCH_DIST ? p0 : null });
+      }
+    } else if (unmatchedNew.length === 1 && availablePersistent.length >= 1) {
+      const n0 = unmatchedNew[0];
       let nearestDist = Infinity;
-      let matchedHand: TrackedHand | null = null;
-      let matchedIdx = -1;
-
-      for (let i = 0; i < availablePersistent.length; i++) {
-        const existing = availablePersistent[i];
-        const dx = newHand.palmCenter.x - existing.smoothedPalmCenter.x;
-        const dy = newHand.palmCenter.y - existing.smoothedPalmCenter.y;
-        const dist = Math.hypot(dx, dy);
-
-        if (dist < nearestDist && dist < 0.45) {
-          nearestDist = dist;
-          matchedHand = existing;
-          matchedIdx = i;
+      let bestP: TrackedHand | null = null;
+      for (const p of availablePersistent) {
+        const d = Math.hypot(n0.palmCenter.x - p.smoothedPalmCenter.x, n0.palmCenter.y - p.smoothedPalmCenter.y);
+        if (d < nearestDist) {
+          nearestDist = d;
+          bestP = p;
         }
       }
+      matchedPairs.push({ newHand: n0, existing: nearestDist <= MAX_MATCH_DIST ? bestP : null });
+    } else {
+      // 0 or more new hands with 0 persistent hands
+      for (const n of unmatchedNew) {
+        matchedPairs.push({ newHand: n, existing: null });
+      }
+    }
 
-      if (matchedHand && matchedIdx !== -1) {
-        availablePersistent.splice(matchedIdx, 1);
-        matchedHand.rawLandmarks = newHand.landmarks;
-        matchedHand.rawPalmCenter = newHand.palmCenter;
-        matchedHand.lastSeenTime = now;
+    const matchedThisFrame: TrackedHand[] = [];
 
-        // Apply One Euro filter in frame fractions per second
-        matchedHand.filter.setParams(tuning.smoothing, tuning.responsiveness);
-        const smoothed = matchedHand.filter.filter(newHand.palmCenter.x, newHand.palmCenter.y, now / 1000);
-        matchedHand.smoothedPalmCenter = smoothed;
+    for (const pair of matchedPairs) {
+      const newHand = pair.newHand;
+      const existing = pair.existing;
 
-        // Deck assignment with dead band
-        matchedHand.deckId = assignDeck(smoothed.x, matchedHand.deckId);
-        matchedHand.isInRestZone = smoothed.y >= restZoneThresholdY;
+      if (existing) {
+        existing.rawLandmarks = newHand.landmarks;
+        existing.rawPalmCenter = newHand.palmCenter;
+        existing.lastSeenTime = now;
 
-        this.persistentHands.set(matchedHand.id, matchedHand);
-        matchedThisFrame.push(matchedHand);
+        // Apply One Euro filter
+        existing.filter.setParams(tuning.smoothing, tuning.responsiveness);
+        const smoothed = existing.filter.filter(newHand.palmCenter.x, newHand.palmCenter.y, now / 1000);
+        existing.smoothedPalmCenter = smoothed;
+        existing.isInRestZone = smoothed.y >= restZoneThresholdY;
+
+        this.persistentHands.set(existing.id, existing);
+        matchedThisFrame.push(existing);
       } else {
         // New hand
         const filter = new OneEuroPoint2D(tuning.smoothing, tuning.responsiveness);
         const smoothed = filter.filter(newHand.palmCenter.x, newHand.palmCenter.y, now / 1000);
-        const deckId = assignDeck(smoothed.x, null);
         const isInRestZone = smoothed.y >= restZoneThresholdY;
 
         const newTrackedHand: TrackedHand = {
@@ -256,13 +301,47 @@ export class TrackerClient {
           rawPalmCenter: newHand.palmCenter,
           smoothedPalmCenter: smoothed,
           lastSeenTime: now,
-          deckId,
+          deckId: smoothed.x < 0.5 ? 'A' : 'B',
           isInRestZone,
           filter
         };
 
         this.persistentHands.set(newTrackedHand.id, newTrackedHand);
         matchedThisFrame.push(newTrackedHand);
+      }
+    }
+
+    // 3. Autonomous Deck Assignment:
+    // When two hands are present, they MUST independently control Decks A and B!
+    if (matchedThisFrame.length === 2) {
+      const [hA, hB] = matchedThisFrame[0].smoothedPalmCenter.x <= matchedThisFrame[1].smoothedPalmCenter.x
+        ? [matchedThisFrame[0], matchedThisFrame[1]]
+        : [matchedThisFrame[1], matchedThisFrame[0]];
+
+      const activeA = this.activeDeckQuery ? this.activeDeckQuery(hA.id) : null;
+      const activeB = this.activeDeckQuery ? this.activeDeckQuery(hB.id) : null;
+
+      if (activeA && activeB) {
+        hA.deckId = activeA;
+        hB.deckId = activeB;
+      } else if (activeA) {
+        hA.deckId = activeA;
+        hB.deckId = activeA === 'A' ? 'B' : 'A';
+      } else if (activeB) {
+        hB.deckId = activeB;
+        hA.deckId = activeB === 'A' ? 'B' : 'A';
+      } else {
+        // Left hand is Deck A, Right hand is Deck B
+        hA.deckId = 'A';
+        hB.deckId = 'B';
+      }
+    } else if (matchedThisFrame.length === 1) {
+      const h = matchedThisFrame[0];
+      const activeDeck = this.activeDeckQuery ? this.activeDeckQuery(h.id) : null;
+      if (activeDeck) {
+        h.deckId = activeDeck;
+      } else {
+        h.deckId = assignDeck(h.smoothedPalmCenter.x, h.deckId);
       }
     }
 

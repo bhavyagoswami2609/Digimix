@@ -313,6 +313,7 @@ export class StageScreen implements ScreenComponent {
         await this.videoEl.play().catch(() => {});
       }
 
+      trackerClient.setActiveDeckQuery((handId) => gestureController.getActiveDeckForHand(handId));
       trackerClient.start(this.videoEl, (hands, vw, vh) => {
         this.onHandsTracked(hands, vw, vh);
       });
@@ -617,6 +618,7 @@ export class StageScreen implements ScreenComponent {
     window.removeEventListener('resize', this.onResizeBound);
 
     trackerClient.stop();
+    trackerClient.setActiveDeckQuery(() => null);
     cameraService.stopCamera();
 
     if (this.helpOverlay) {

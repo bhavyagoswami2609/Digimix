@@ -103,6 +103,22 @@ export function assignDeck(
 }
 
 /**
+ * Assigns decks autonomously when two hands are present simultaneously:
+ * The hand on the left (lower mirrored X) controls Deck A.
+ * The hand on the right (higher mirrored X) controls Deck B.
+ */
+export function assignTwoDecks(
+  hand1X: number,
+  hand2X: number
+): { deck1: DeckId; deck2: DeckId } {
+  if (hand1X <= hand2X) {
+    return { deck1: 'A', deck2: 'B' };
+  } else {
+    return { deck1: 'B', deck2: 'A' };
+  }
+}
+
+/**
  * Standard MediaPipe Hand Connections for skeleton rendering
  */
 export const HAND_CONNECTIONS: [number, number][] = [

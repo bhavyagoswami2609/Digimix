@@ -55,7 +55,7 @@ export class GestureController {
       this.handLastSeenTimes.set(hand.id, now);
     }
 
-    for (const handId of Array.from(this.handDetectors.keys())) {
+    for (const handId of Array.from(this.handLastSeenTimes.keys())) {
       if (!presentHandIds.has(handId)) {
         const lastSeen = this.handLastSeenTimes.get(handId) ?? 0;
         if (now - lastSeen > VISION_CONFIG.HAND_LOST_TIMEOUT_MS) {
@@ -140,8 +140,28 @@ export class GestureController {
     stageWidth: number,
     stageHeight: number
   ): HandGestureVisualState | null {
-    const deckId = hand.deckId;
-    const target = this.getTargetForPose(pose, deckId);
+    const existingGrab = grabCtrl.getActiveGrab();
+    let target: ControlledTarget | null = null;
+
+    if (existingGrab) {
+      // Check if current pose matches the active grab
+      const isStillGrabbing =
+        (existingGrab.target.type === 'crossfader' && pose === 'point') ||
+        (existingGrab.target.type === 'deck' && (
+          (existingGrab.target.control === 'volume' && pose === 'pinch_index') ||
+          (existingGrab.target.control === 'bass' && pose === 'pinch_middle') ||
+          (existingGrab.target.control === 'mid' && pose === 'pinch_ring') ||
+          (existingGrab.target.control === 'treble' && pose === 'pinch_pinky') ||
+          (existingGrab.target.control === 'tempo' && pose === 'peace')
+        ));
+      if (isStillGrabbing) {
+        target = existingGrab.target;
+      }
+    } else {
+      target = this.getTargetForPose(pose, hand.deckId);
+    }
+
+    const deckId = target && target.type === 'deck' ? target.deckId : hand.deckId;
 
     // Compute wrist screen position for pose chip
     const wristRaw = hand.rawLandmarks[0];
@@ -170,7 +190,6 @@ export class GestureController {
     // A. Grabbing poses (Pinch, Peace, Point)
     if (target) {
       const targetKey = target.type === 'crossfader' ? 'crossfader' : `${target.deckId}_${target.control}`;
-      const existingGrab = grabCtrl.getActiveGrab();
 
       // Arbitration check:
       const currentHolder = this.activeArbitrations.get(targetKey);
@@ -206,14 +225,14 @@ export class GestureController {
       );
 
       if (updateRes && updateRes.hasValueChange) {
-        if (target.type === 'crossfader') {
+        if (updateRes.target.type === 'crossfader') {
           appStore.setCrossfader(updateRes.newU);
         } else {
-          appStore.setDeckControl(target.deckId, target.control, updateRes.newU);
+          appStore.setDeckControl(updateRes.target.deckId, updateRes.target.control, updateRes.newU);
         }
 
         // Format live value chip
-        valueChipText = this.formatValueChip(target, updateRes.newU);
+        valueChipText = this.formatValueChip(updateRes.target, updateRes.newU);
       }
 
       // Set pose name label & engaged fingertip
@@ -430,6 +449,17 @@ export class GestureController {
 
   getHelpProgress(): number {
     return this.helpProgress;
+  }
+
+  getActiveDeckForHand(handId: number): DeckId | null {
+    const grab = this.handGrabs.get(handId);
+    if (grab) {
+      const active = grab.getActiveGrab();
+      if (active && active.target.type === 'deck') {
+        return active.target.deckId;
+      }
+    }
+    return null;
   }
 }
 

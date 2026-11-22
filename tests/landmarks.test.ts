@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assignDeck, calculatePalmCenter, videoToScreen } from '../src/vision/landmarks.ts';
+import { assignDeck, assignTwoDecks, calculatePalmCenter, videoToScreen } from '../src/vision/landmarks.ts';
 
 describe('Landmarks and Coordinate Mapping', () => {
   it('correctly maps normalized video coordinates to screen with cover crop and mirroring', () => {
@@ -32,5 +32,22 @@ describe('Landmarks and Coordinate Mapping', () => {
     // If unassigned inside dead band, splits at 0.5
     expect(assignDeck(0.48, null)).toBe('A');
     expect(assignDeck(0.52, null)).toBe('B');
+  });
+
+  it('assigns decks autonomously when two hands are present, regardless of frame position', () => {
+    // Both hands on the left side of frame (user sitting to the left)
+    const leftSide = assignTwoDecks(0.25, 0.42);
+    expect(leftSide.deck1).toBe('A');
+    expect(leftSide.deck2).toBe('B');
+
+    // Both hands on the right side of frame (user sitting to the right)
+    const rightSide = assignTwoDecks(0.58, 0.75);
+    expect(rightSide.deck1).toBe('A');
+    expect(rightSide.deck2).toBe('B');
+
+    // Order reversed: hand 1 is on the right, hand 2 is on the left
+    const reversed = assignTwoDecks(0.70, 0.30);
+    expect(reversed.deck1).toBe('B');
+    expect(reversed.deck2).toBe('A');
   });
 });
