@@ -196,7 +196,7 @@ export function classifyInstantPose(
   // Knuckles and fingertips point significantly to the left of the wrist in mirrored screen space
   const isRotatedLeft =
     (wrist.x - midBase.x > 0.35 * s) &&
-    (wrist.x - pts[12].x > 0.45 * s || wrist.x - pts[8].x > 0.45 * s);
+    (wrist.x - pts[12].x > 0.35 * s || wrist.x - pts[8].x > 0.35 * s || wrist.x - midBase.x > 0.45 * s);
   if (isRotatedLeft && !currentEngagedPinch) {
     return 'rotate_left';
   }

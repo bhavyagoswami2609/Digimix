@@ -1,6 +1,6 @@
 import { appStore, DeckId } from '../app/store.ts';
 import { VISION_CONFIG } from '../config.ts';
-import { calculatePalmCenter, NormalizedLandmark } from './landmarks.ts';
+import { assignDeck, calculatePalmCenter, NormalizedLandmark } from './landmarks.ts';
 import { OneEuroPoint2D } from './one-euro.ts';
 
 export interface TrackedHand {
@@ -312,11 +312,15 @@ export class TrackerClient {
     }
 
     // 3. Autonomous Deck Assignment:
-    // When two hands are present, they MUST independently control Decks A and B!
-    if (matchedThisFrame.length === 2) {
-      const [hA, hB] = matchedThisFrame[0].smoothedPalmCenter.x <= matchedThisFrame[1].smoothedPalmCenter.x
-        ? [matchedThisFrame[0], matchedThisFrame[1]]
-        : [matchedThisFrame[1], matchedThisFrame[0]];
+    // Only hands outside the rest zone participate in active DJing
+    const activeHands = matchedThisFrame.filter((h) => !h.isInRestZone);
+
+    if (activeHands.length >= 2) {
+      // Two (or more) active hands in the air: sort by mirrored X coordinate
+      // Left hand controls Deck A, Right hand controls Deck B
+      const [hA, hB] = activeHands[0].smoothedPalmCenter.x <= activeHands[1].smoothedPalmCenter.x
+        ? [activeHands[0], activeHands[1]]
+        : [activeHands[1], activeHands[0]];
 
       const activeA = this.activeDeckQuery ? this.activeDeckQuery(hA.id) : null;
       const activeB = this.activeDeckQuery ? this.activeDeckQuery(hB.id) : null;
@@ -331,20 +335,27 @@ export class TrackerClient {
         hB.deckId = activeB;
         hA.deckId = activeB === 'A' ? 'B' : 'A';
       } else {
-        // Left hand is Deck A, Right hand is Deck B
         hA.deckId = 'A';
         hB.deckId = 'B';
       }
-    } else if (matchedThisFrame.length === 1) {
-      const h = matchedThisFrame[0];
+    } else if (activeHands.length === 1) {
+      // Exactly ONE active hand in the air
+      const h = activeHands[0];
       const activeDeck = this.activeDeckQuery ? this.activeDeckQuery(h.id) : null;
       if (activeDeck) {
+        // While actively grabbing a control, retain the grabbed deck
         h.deckId = activeDeck;
-      } else if (!h.deckId) {
-        // Assign on initial detection based on side (< 0.5 is Deck A, >= 0.5 is Deck B)
-        h.deckId = h.smoothedPalmCenter.x < 0.5 ? 'A' : 'B';
+      } else {
+        // Assign deck based on position with deadband [0.47, 0.53]
+        h.deckId = assignDeck(h.smoothedPalmCenter.x, h.deckId);
       }
-      // Once assigned, the hand's deck is locked and never flips on a single-hand sweep
+    }
+
+    // For any resting hands, assign based on position
+    for (const h of matchedThisFrame) {
+      if (h.isInRestZone) {
+        h.deckId = assignDeck(h.smoothedPalmCenter.x, h.deckId);
+      }
     }
 
     this.activeVisibleHands = matchedThisFrame;

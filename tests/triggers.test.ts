@@ -82,4 +82,62 @@ describe('Trigger Detector', () => {
     const res5 = detector.update(true, hotCueAction, t0 + 600, 0);
     expect(res5.hasFired).toBe(true);
   });
+
+  it('immediately fires when switching action types (e.g. play_pause to restart) without delay', () => {
+    const detector = new TriggerDetector();
+    let t = 1000;
+    const playAction = { type: 'play_pause' as const, deckId: 'A' as const };
+    const restartAction = { type: 'restart' as const, deckId: 'A' as const };
+
+    // Fire play/pause at t=1000
+    const playRes = detector.update(true, playAction, t, 0);
+    expect(playRes.hasFired).toBe(true);
+    expect(playRes.action?.type).toBe('play_pause');
+
+    // Still holding open at t=1016 -> does not re-fire
+    const playHeld = detector.update(true, playAction, t + 16, 0);
+    expect(playHeld.hasFired).toBe(false);
+
+    // Switch directly to rotate_left (restart) at t=1050
+    const restartRes = detector.update(true, restartAction, t + 50, 0);
+    expect(restartRes.hasFired).toBe(true);
+    expect(restartRes.action?.type).toBe('restart');
+
+    // Holding restart at t=1066 -> does not re-fire
+    const restartHeld = detector.update(true, restartAction, t + 66, 0);
+    expect(restartHeld.hasFired).toBe(false);
+  });
+
+  it('prevents single continuous open-hand pose from firing on Deck B during crossover', () => {
+    const detector = new TriggerDetector();
+    let t = 1000;
+    const playA = { type: 'play_pause' as const, deckId: 'A' as const };
+    const playB = { type: 'play_pause' as const, deckId: 'B' as const };
+
+    // Fire play on Deck A
+    const resA = detector.update(true, playA, t, 0);
+    expect(resA.hasFired).toBe(true);
+    if (resA.action && 'deckId' in resA.action) {
+      expect(resA.action.deckId).toBe('A');
+    }
+
+    // Hand stays open while moving across center to Deck B at t=1200
+    const resCross = detector.update(true, playB, t + 200, 0);
+    expect(resCross.hasFired).toBe(false);
+
+    // Hand stays open on Deck B at t=1500 (even after cooldown time)
+    const resBStillHeld = detector.update(true, playB, t + 500, 0);
+    expect(resBStillHeld.hasFired).toBe(false);
+
+    // User closes/releases hand on Deck B for >300ms
+    detector.update(false, playB, t + 550, 0);
+    detector.update(false, playB, t + 900, 0);
+
+    // User shows open hand on Deck B -> now fires Deck B cleanly!
+    const resBFresh = detector.update(true, playB, t + 950, 0);
+    expect(resBFresh.hasFired).toBe(true);
+    if (resBFresh.action && 'deckId' in resBFresh.action) {
+      expect(resBFresh.action.deckId).toBe('B');
+    }
+  });
 });

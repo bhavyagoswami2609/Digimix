@@ -41,12 +41,27 @@ export class TriggerDetector {
         this.absentStartTime = now;
       } else if (now - this.absentStartTime >= 300) {
         this.fired = false;
+        this.activeAction = null;
       }
       return { hasFired: false, action: null, progress: 0 };
     }
 
     // Pose is active
+    if (this.absentStartTime > 0 && now - this.absentStartTime >= 300) {
+      this.fired = false;
+      this.activeAction = null;
+    }
     this.absentStartTime = 0;
+
+    // Check if the user transitioned to a different action type (e.g. play_pause -> restart, or set_hotcue)
+    const isDifferentActionType = this.activeAction !== null && action.type !== this.activeAction.type;
+    if (isDifferentActionType) {
+      // Switching to a distinct gesture resets the latch and cooldown immediately
+      this.fired = false;
+      this.isHolding = false;
+      this.cooldownUntilTime = 0;
+      this.activeAction = null;
+    }
 
     // Check cooldown: "require the pose to end and 800 ms to pass before the next trigger"
     if (now < this.cooldownUntilTime) {
