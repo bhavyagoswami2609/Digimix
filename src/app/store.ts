@@ -271,6 +271,23 @@ class Store {
     this.notify();
   }
 
+  jumpHotCuePaused(deckId: DeckId) {
+    const deck = this.state.decks[deckId];
+    const target = deck.hotCueSec !== null ? deck.hotCueSec : 0;
+    this.state = {
+      ...this.state,
+      decks: {
+        ...this.state.decks,
+        [deckId]: {
+          ...deck,
+          currentPositionSec: target,
+          isPlaying: false
+        }
+      }
+    };
+    this.notify();
+  }
+
   triggerCue(deckId: DeckId) {
     const deck = this.state.decks[deckId];
     this.state = {

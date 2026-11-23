@@ -234,6 +234,17 @@ describe('Pose Recognition', () => {
     expect(classifyInstantPose(lms)).toBe('rotate_left');
   });
 
+  it('recognizes Rotate Right when hand is rotated towards the right', () => {
+    const lms: NormalizedLandmark[] = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5 }));
+    lms[0] = { x: 0.5, y: 0.8 }; // wrist (mirrored x = 0.5)
+    lms[9] = { x: 0.25, y: 0.65 }; // midBase (mirrored x = 0.75, to the right of wrist)
+    lms[8] = { x: 0.15, y: 0.60 }; // index tip (mirrored x = 0.85)
+    lms[12] = { x: 0.10, y: 0.65 }; // mid tip (mirrored x = 0.90)
+    lms[4] = { x: 0.35, y: 0.60 }; // thumb
+
+    expect(classifyInstantPose(lms)).toBe('rotate_right');
+  });
+
   it('debounces pose detection over 3 consecutive frames', () => {
     const detector = new DebouncedPoseDetector();
     const peaceLms = createSyntheticLandmarks({

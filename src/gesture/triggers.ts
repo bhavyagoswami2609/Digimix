@@ -5,6 +5,7 @@ export type TriggerAction =
   | { type: 'play_pause'; deckId: DeckId }
   | { type: 'restart'; deckId: DeckId }
   | { type: 'cue'; deckId: DeckId }
+  | { type: 'cue_paused'; deckId: DeckId }
   | { type: 'set_hotcue'; deckId: DeckId }
   | { type: 'jump_hotcue'; deckId: DeckId }
   | { type: 'help_toggle' };

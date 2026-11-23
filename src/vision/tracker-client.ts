@@ -311,49 +311,16 @@ export class TrackerClient {
       }
     }
 
-    // 3. Autonomous Deck Assignment:
-    // Only hands outside the rest zone participate in active DJing
-    const activeHands = matchedThisFrame.filter((h) => !h.isInRestZone);
-
-    if (activeHands.length >= 2) {
-      // Two (or more) active hands in the air: sort by mirrored X coordinate
-      // Left hand controls Deck A, Right hand controls Deck B
-      const [hA, hB] = activeHands[0].smoothedPalmCenter.x <= activeHands[1].smoothedPalmCenter.x
-        ? [activeHands[0], activeHands[1]]
-        : [activeHands[1], activeHands[0]];
-
-      const activeA = this.activeDeckQuery ? this.activeDeckQuery(hA.id) : null;
-      const activeB = this.activeDeckQuery ? this.activeDeckQuery(hB.id) : null;
-
-      if (activeA && activeB) {
-        hA.deckId = activeA;
-        hB.deckId = activeB;
-      } else if (activeA) {
-        hA.deckId = activeA;
-        hB.deckId = activeA === 'A' ? 'B' : 'A';
-      } else if (activeB) {
-        hB.deckId = activeB;
-        hA.deckId = activeB === 'A' ? 'B' : 'A';
-      } else {
-        hA.deckId = 'A';
-        hB.deckId = 'B';
-      }
-    } else if (activeHands.length === 1) {
-      // Exactly ONE active hand in the air
-      const h = activeHands[0];
+    // 3. Autonomous Deck Assignment with center split & deadband:
+    // Left side of frame (x < 0.47) strictly controls Deck A (left track).
+    // Right side of frame (x > 0.53) strictly controls Deck B (right track).
+    // Center deadband [0.47, 0.53] retains previous assignment (or splits at 0.50) to prevent jitter.
+    for (const h of matchedThisFrame) {
       const activeDeck = this.activeDeckQuery ? this.activeDeckQuery(h.id) : null;
       if (activeDeck) {
         // While actively grabbing a control, retain the grabbed deck
         h.deckId = activeDeck;
       } else {
-        // Assign deck based on position with deadband [0.47, 0.53]
-        h.deckId = assignDeck(h.smoothedPalmCenter.x, h.deckId);
-      }
-    }
-
-    // For any resting hands, assign based on position
-    for (const h of matchedThisFrame) {
-      if (h.isInRestZone) {
         h.deckId = assignDeck(h.smoothedPalmCenter.x, h.deckId);
       }
     }

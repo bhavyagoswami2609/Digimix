@@ -98,6 +98,13 @@ export class AudioEngine {
     }
   }
 
+  jumpHotCuePaused(id: 'A' | 'B') {
+    const deck = id === 'A' ? this.deckA : this.deckB;
+    if (deck) {
+      deck.jumpToHotCuePaused();
+    }
+  }
+
   restartTrack(id: 'A' | 'B') {
     this.ensureStartupRamp();
     const deck = id === 'A' ? this.deckA : this.deckB;

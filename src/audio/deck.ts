@@ -184,6 +184,13 @@ export class DeckAudioNode {
     this.isPlaying = true;
   }
 
+  jumpToHotCuePaused() {
+    const target = this.hotCuePoint !== null ? this.hotCuePoint : 0;
+    this.offset = target;
+    this.stopInternal();
+    this.isPlaying = false;
+  }
+
   getHotCue(): number | null {
     return this.hotCuePoint;
   }

@@ -50,4 +50,14 @@ describe('Landmarks and Coordinate Mapping', () => {
     expect(reversed.deck1).toBe('B');
     expect(reversed.deck2).toBe('A');
   });
+
+  it('strictly isolates left and right screen regions so right-side positions never map to Deck A', () => {
+    // Two hands on the right side of the screen (e.g. x = 0.65 and x = 0.85)
+    expect(assignDeck(0.65, null)).toBe('B');
+    expect(assignDeck(0.85, null)).toBe('B');
+
+    // Two hands on the left side of the screen (e.g. x = 0.20 and x = 0.35)
+    expect(assignDeck(0.20, null)).toBe('A');
+    expect(assignDeck(0.35, null)).toBe('A');
+  });
 });

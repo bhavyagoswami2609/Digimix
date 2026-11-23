@@ -7,6 +7,7 @@ export type DetectedPoseName =
   | 'spiderman_inward'
   | 'spiderman_outward'
   | 'rotate_left'
+  | 'rotate_right'
   | 'point'
   | 'peace'
   | 'pinch_index'
@@ -201,6 +202,15 @@ export function classifyInstantPose(
     return 'rotate_left';
   }
 
+  // 6b. Rotate right (wrist rotated towards the right, pointing right):
+  // Knuckles and fingertips point significantly to the right of the wrist in mirrored screen space
+  const isRotatedRight =
+    (midBase.x - wrist.x > 0.35 * s) &&
+    (pts[12].x - wrist.x > 0.35 * s || pts[8].x - wrist.x > 0.35 * s || midBase.x - wrist.x > 0.45 * s);
+  if (isRotatedRight && !currentEngagedPinch) {
+    return 'rotate_right';
+  }
+
   // 7. Open:
   // "All four fingers extended"
   if (allFourExtended) {
@@ -211,8 +221,8 @@ export function classifyInstantPose(
 }
 
 /**
- * Debounces pose detection over 3 consecutive frames as specified in Section 6:
- * "A pose must be seen for 3 consecutive frames before it counts, and must be absent for 3 consecutive frames before it ends."
+ * Debounces pose detection over consecutive frames:
+ * Instant triggers confirm in 1 frame (0 ms latency).
  */
 export class DebouncedPoseDetector {
   private activePose: DetectedPoseName = 'none';
@@ -246,6 +256,7 @@ export class DebouncedPoseDetector {
     const isInstantTrigger = (
       raw === 'open' ||
       raw === 'rotate_left' ||
+      raw === 'rotate_right' ||
       raw === 'spiderman_inward' ||
       raw === 'spiderman_outward' ||
       raw === 'fist' ||

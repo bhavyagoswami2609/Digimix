@@ -273,8 +273,11 @@ export class GestureController {
       }
     }
 
-    // B. Triggers: Instantaneous Play/Pause, Restart from start, and Hot Cues
-    if (pose === 'rotate_left') {
+    // B. Triggers: Multi-stage Transport Controls (Play, Pause, Restart, Cue) and Hot Cues
+    const isPlaying = appStore.getState().decks[deckId].isPlaying;
+
+    if (!isPlaying && pose === 'rotate_left') {
+      // While paused, rotating hand to the left restarts track from 0:00 and plays
       poseNameLabel = 'Restart';
       const trRes = trigger.update(true, { type: 'restart', deckId }, now, 0);
       triggerProgress = trRes.progress;
@@ -282,8 +285,17 @@ export class GestureController {
         audioEngine.restartTrack(deckId);
         appStore.restartTrack(deckId);
       }
+    } else if (!isPlaying && pose === 'rotate_right') {
+      // While paused, rotating hand to the right jumps track to hot cue point while remaining paused
+      poseNameLabel = 'Cue';
+      const trRes = trigger.update(true, { type: 'cue_paused', deckId }, now, 0);
+      triggerProgress = trRes.progress;
+      if (trRes.hasFired) {
+        audioEngine.jumpHotCuePaused(deckId);
+        appStore.jumpHotCuePaused(deckId);
+      }
     } else if (pose === 'open' || pose === 'thumbs_up') {
-      const isPlaying = appStore.getState().decks[deckId].isPlaying;
+      // Open hand toggles play/pause: pauses when playing, resumes playback when paused
       poseNameLabel = isPlaying ? 'Pause' : 'Play';
       const trRes = trigger.update(true, { type: 'play_pause', deckId }, now, 0);
       triggerProgress = trRes.progress;
