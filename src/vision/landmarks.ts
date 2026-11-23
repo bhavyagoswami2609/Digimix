@@ -103,19 +103,22 @@ export function assignDeck(
 }
 
 /**
- * Assigns decks autonomously when two hands are present simultaneously:
- * The hand on the left (lower mirrored X) controls Deck A.
- * The hand on the right (higher mirrored X) controls Deck B.
+ * Assigns decks for two hands adhering strictly to screen regions:
+ * Gestures detected on the left half of the camera view control only Deck A (left track).
+ * Gestures detected on the right half of the camera view control only Deck B (right track).
+ * Two hands on the same side of the screen both adhere to that side's deck.
+ * Deadband [0.47, 0.53] protects against toggling at the boundary.
  */
 export function assignTwoDecks(
   hand1X: number,
-  hand2X: number
+  hand2X: number,
+  prevDeck1: DeckId | null = null,
+  prevDeck2: DeckId | null = null
 ): { deck1: DeckId; deck2: DeckId } {
-  if (hand1X <= hand2X) {
-    return { deck1: 'A', deck2: 'B' };
-  } else {
-    return { deck1: 'B', deck2: 'A' };
-  }
+  return {
+    deck1: assignDeck(hand1X, prevDeck1),
+    deck2: assignDeck(hand2X, prevDeck2)
+  };
 }
 
 /**

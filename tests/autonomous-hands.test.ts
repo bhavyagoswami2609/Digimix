@@ -3,9 +3,11 @@ import { appStore } from '../src/app/store.ts';
 import { GestureController } from '../src/gesture/controller.ts';
 import { TrackedHand } from '../src/vision/tracker-client.ts';
 import { OneEuroPoint2D } from '../src/vision/one-euro.ts';
-import { NormalizedLandmark } from '../src/vision/landmarks.ts';
+import { NormalizedLandmark, assignDeck } from '../src/vision/landmarks.ts';
 
-function createMockLandmarks(pose: 'pinch_index' | 'open' | 'spiderman_inward' | 'spiderman_outward' | 'point' | 'fist' | 'rotate_left' | 'rotate_right'): NormalizedLandmark[] {
+function createMockLandmarks(
+  pose: 'pinch_index' | 'pinch_middle' | 'peace' | 'open' | 'spiderman_inward' | 'spiderman_outward' | 'point' | 'fist' | 'rotate_left' | 'rotate_right'
+): NormalizedLandmark[] {
   // 21 landmarks
   // Wrist at (0.5, 0.5)
   const lms: NormalizedLandmark[] = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5, z: 0 }));
@@ -43,6 +45,21 @@ function createMockLandmarks(pose: 'pinch_index' | 'open' | 'spiderman_inward' |
     lms[12] = { x: 0.50, y: 0.2, z: 0 };
     lms[16] = { x: 0.55, y: 0.2, z: 0 };
     lms[20] = { x: 0.60, y: 0.25, z: 0 };
+  } else if (pose === 'pinch_middle') {
+    // Thumb tip (4) and Middle tip (12) touch each other (Bass EQ)
+    lms[4] = { x: 0.50, y: 0.35, z: 0 };
+    lms[12] = { x: 0.50, y: 0.35, z: 0 };
+    // Index, ring, pinky extended
+    lms[8] = { x: 0.45, y: 0.2, z: 0 };
+    lms[16] = { x: 0.55, y: 0.2, z: 0 };
+    lms[20] = { x: 0.60, y: 0.25, z: 0 };
+  } else if (pose === 'peace') {
+    // Index and middle extended, ring and pinky curled (Tempo)
+    lms[8] = { x: 0.45, y: 0.2, z: 0 };
+    lms[12] = { x: 0.50, y: 0.18, z: 0 };
+    lms[16] = { x: 0.55, y: 0.55, z: 0 };
+    lms[20] = { x: 0.60, y: 0.55, z: 0 };
+    lms[4] = { x: 0.55, y: 0.55, z: 0 };
   } else if (pose === 'point') {
     // Index extended, others curled
     lms[8] = { x: 0.48, y: 0.2, z: 0 };
@@ -74,7 +91,7 @@ function createTrackedHand(
   deckId: 'A' | 'B',
   x: number,
   y: number,
-  pose: 'pinch_index' | 'open' | 'spiderman_inward' | 'spiderman_outward' | 'point' | 'fist' | 'rotate_left' | 'rotate_right'
+  pose: 'pinch_index' | 'pinch_middle' | 'peace' | 'open' | 'spiderman_inward' | 'spiderman_outward' | 'point' | 'fist' | 'rotate_left' | 'rotate_right'
 ): TrackedHand {
   return {
     id,
@@ -95,7 +112,12 @@ describe('Autonomous Two-Hand Simultaneous Mixing', () => {
     controller = new GestureController();
     appStore.setDeckControl('A', 'volume', 0.75);
     appStore.setDeckControl('B', 'volume', 0.75);
+    appStore.setDeckControl('A', 'bass', 0.5);
+    appStore.setDeckControl('B', 'bass', 0.5);
+    appStore.setActiveControl('A', null);
+    appStore.setActiveControl('B', null);
     appStore.setCrossfader(0.5);
+    appStore.setActiveCrossfader(false);
     appStore.setTransportPlaying('A', false);
     appStore.setTransportPlaying('B', false);
   });
@@ -246,5 +268,153 @@ describe('Autonomous Two-Hand Simultaneous Mixing', () => {
     // Starts playing from 30 seconds, does NOT reset to 0
     expect(state.decks.A.isPlaying).toBe(true);
     expect(state.decks.A.currentPositionSec).toBe(30);
+  });
+
+  it('pauses playback when playing and open hand gesture is performed', () => {
+    // Deck starts at 50 seconds and is playing
+    appStore.setDeckPosition('A', 50);
+    appStore.setTransportPlaying('A', true);
+
+    const handA = createTrackedHand(1, 'A', 0.30, 0.50, 'open');
+    controller.processFrame([handA], 1000);
+
+    const state = appStore.getState();
+    // Pauses playback and keeps position at 50 seconds
+    expect(state.decks.A.isPlaying).toBe(false);
+    expect(state.decks.A.currentPositionSec).toBe(50);
+  });
+
+  it('while playing, rotate_right does not trigger hot cue jump and keeps playing', () => {
+    // Deck is playing at 50 seconds with hot cue at 15 seconds
+    appStore.setDeckPosition('A', 50);
+    appStore.setHotCuePosition('A', 15);
+    appStore.setTransportPlaying('A', true);
+
+    const handA = createTrackedHand(1, 'A', 0.30, 0.50, 'rotate_right');
+    controller.processFrame([handA], 1000);
+
+    const state = appStore.getState();
+    // Position remains 50 (did not jump to 15) and continues playing
+    expect(state.decks.A.currentPositionSec).toBe(50);
+    expect(state.decks.A.isPlaying).toBe(true);
+  });
+
+  it('two hands on the left side of the screen strictly control Deck A without misassigning Deck B', () => {
+    // Two hands both on the left side of the camera view (x = 0.20 and x = 0.35)
+    const hand1 = createTrackedHand(1, 'A', 0.20, 0.50, 'pinch_index'); // Volume
+    const hand2 = createTrackedHand(2, 'A', 0.35, 0.50, 'pinch_middle'); // Bass
+
+    let t = 1000;
+    // Debounce 3 frames
+    for (let f = 0; f < 3; f++) {
+      controller.processFrame([hand1, hand2], t);
+      t += 33;
+    }
+
+    // Advance past 120ms arming period
+    t += 150;
+    controller.processFrame([hand1, hand2], t);
+
+    // Hand 1 moves up -> Deck A volume increases
+    hand1.smoothedPalmCenter.y = 0.40;
+    // Hand 2 moves down -> Deck A bass decreases
+    hand2.smoothedPalmCenter.y = 0.60;
+
+    t += 33;
+    controller.processFrame([hand1, hand2], t);
+
+    const state = appStore.getState();
+    // Deck A volume increased above 0.75
+    expect(state.decks.A.volume).toBeGreaterThan(0.75);
+    // Deck A bass decreased below 0.50
+    expect(state.decks.A.bass).toBeLessThan(0.50);
+
+    // Deck B controls are completely untouched
+    expect(state.decks.B.volume).toBe(0.75);
+    expect(state.decks.B.bass).toBe(0.50);
+    expect(state.decks.B.activeControl).toBeNull();
+  });
+
+  it('two hands on the left side arbitrate identical control grabs cleanly', () => {
+    // Hand 1 and Hand 2 both on left side trying to grab Volume (pinch_index)
+    const hand1 = createTrackedHand(1, 'A', 0.20, 0.50, 'pinch_index');
+    const hand2 = createTrackedHand(2, 'A', 0.35, 0.50, 'pinch_index');
+
+    let t = 1000;
+    // Debounce
+    for (let f = 0; f < 3; f++) {
+      controller.processFrame([hand1, hand2], t);
+      t += 33;
+    }
+    t += 150;
+    controller.processFrame([hand1, hand2], t);
+
+    // Hand 1 owns the arbitration for A_volume
+    expect(controller.getActiveDeckForHand(1)).toBe('A');
+
+    // Hand 1 moves up
+    hand1.smoothedPalmCenter.y = 0.40;
+    // Hand 2 moves down (should be ignored by arbitration)
+    hand2.smoothedPalmCenter.y = 0.70;
+
+    t += 33;
+    controller.processFrame([hand1, hand2], t);
+
+    const state = appStore.getState();
+    // Controlled by Hand 1
+    expect(state.decks.A.volume).toBeGreaterThan(0.75);
+  });
+
+  it('two hands on the right side of the screen strictly control Deck B without affecting Deck A', () => {
+    // Both hands on right side of camera view (x = 0.65 and x = 0.80)
+    appStore.setDeckPosition('B', 40);
+    appStore.setTransportPlaying('B', false);
+    appStore.setDeckPosition('A', 25);
+    appStore.setTransportPlaying('A', false);
+
+    const hand1 = createTrackedHand(1, 'B', 0.65, 0.50, 'rotate_left');
+    controller.processFrame([hand1], 1000);
+
+    const state = appStore.getState();
+    // Deck B restarted to 0 and is playing
+    expect(state.decks.B.currentPositionSec).toBe(0);
+    expect(state.decks.B.isPlaying).toBe(true);
+
+    // Deck A remains completely untouched
+    expect(state.decks.A.currentPositionSec).toBe(25);
+    expect(state.decks.A.isPlaying).toBe(false);
+  });
+
+  it('spatial boundary hysteresis prevents toggling when moving near the center deadband', () => {
+    // Test boundary hysteresis progression across deadband [0.47, 0.53]
+    let currentDeck: 'A' | 'B' | null = null;
+
+    // Start clearly on the left
+    currentDeck = assignDeck(0.30, currentDeck);
+    expect(currentDeck).toBe('A');
+
+    // Move into the deadband at 0.48
+    currentDeck = assignDeck(0.48, currentDeck);
+    expect(currentDeck).toBe('A');
+
+    // Move further into deadband near right edge at 0.52
+    currentDeck = assignDeck(0.52, currentDeck);
+    expect(currentDeck).toBe('A'); // Hysteresis preserves Deck A!
+
+    // Cross boundary past 0.53 to 0.55
+    currentDeck = assignDeck(0.55, currentDeck);
+    expect(currentDeck).toBe('B'); // Now switches to Deck B!
+
+    // Move back into deadband at 0.51
+    currentDeck = assignDeck(0.51, currentDeck);
+    expect(currentDeck).toBe('B'); // Hysteresis preserves Deck B!
+
+    // Move further into deadband near left edge at 0.48
+    currentDeck = assignDeck(0.48, currentDeck);
+    expect(currentDeck).toBe('B'); // Still preserves Deck B!
+
+    // Cross boundary past 0.47 to 0.44
+    currentDeck = assignDeck(0.44, currentDeck);
+    expect(currentDeck).toBe('A'); // Now switches back to Deck A!
   });
 });

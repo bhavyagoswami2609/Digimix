@@ -178,6 +178,86 @@ describe('Pose Recognition', () => {
     expect(classifyInstantPose(lms)).toBe('pinch_index');
   });
 
+  it('recognizes Middle Pinch (Bass EQ) when thumb touches middle fingertip and other fingers extended', () => {
+    const lms = createSyntheticLandmarks({
+      thumbTip: { x: 0.50, y: 0.30 },
+      fingers: {
+        index: { ext: true, tipX: 0.45, tipY: 0.15 }, // far away
+        middle: { ext: true, tipX: 0.50, tipY: 0.31 }, // d < 0.28
+        ring: { ext: true, tipX: 0.55, tipY: 0.18 }, // far away
+        pinky: { ext: true, tipX: 0.60, tipY: 0.22 }
+      }
+    });
+
+    expect(classifyInstantPose(lms)).toBe('pinch_middle');
+  });
+
+  it('recognizes Ring Pinch (Mid EQ) when thumb touches ring fingertip and other fingers extended', () => {
+    const lms = createSyntheticLandmarks({
+      thumbTip: { x: 0.55, y: 0.30 },
+      fingers: {
+        index: { ext: true, tipX: 0.45, tipY: 0.15 },
+        middle: { ext: true, tipX: 0.50, tipY: 0.15 },
+        ring: { ext: true, tipX: 0.55, tipY: 0.31 }, // d < 0.28
+        pinky: { ext: true, tipX: 0.60, tipY: 0.22 }
+      }
+    });
+
+    expect(classifyInstantPose(lms)).toBe('pinch_ring');
+  });
+
+  it('recognizes Pinky Pinch (Treble EQ) when thumb touches pinky fingertip and other fingers extended', () => {
+    const lms = createSyntheticLandmarks({
+      thumbTip: { x: 0.60, y: 0.30 },
+      fingers: {
+        index: { ext: true, tipX: 0.45, tipY: 0.15 },
+        middle: { ext: true, tipX: 0.50, tipY: 0.15 },
+        ring: { ext: true, tipX: 0.55, tipY: 0.18 },
+        pinky: { ext: true, tipX: 0.60, tipY: 0.31 } // d < 0.28
+      }
+    });
+
+    expect(classifyInstantPose(lms)).toBe('pinch_pinky');
+  });
+
+  it('segregates continuous grab poses from instant trigger poses without misclassification', () => {
+    // 1. Fist vs Point vs Peace:
+    // Fist: all curled
+    const fistLms = createSyntheticLandmarks({
+      thumbTip: { x: 0.42, y: 0.60 },
+      thumbJoint2: { x: 0.40, y: 0.62 },
+      fingers: { index: { ext: false }, middle: { ext: false }, ring: { ext: false }, pinky: { ext: false } }
+    });
+    expect(classifyInstantPose(fistLms)).toBe('fist');
+
+    // Point: only index extended
+    const pointLms = createSyntheticLandmarks({
+      thumbTip: { x: 0.50, y: 0.60 },
+      fingers: { index: { ext: true, tipX: 0.45, tipY: 0.15 }, middle: { ext: false }, ring: { ext: false }, pinky: { ext: false } }
+    });
+    expect(classifyInstantPose(pointLms)).toBe('point');
+
+    // Peace: index and middle extended
+    const peaceLms = createSyntheticLandmarks({
+      thumbTip: { x: 0.55, y: 0.60 },
+      fingers: { index: { ext: true }, middle: { ext: true }, ring: { ext: false }, pinky: { ext: false } }
+    });
+    expect(classifyInstantPose(peaceLms)).toBe('peace');
+
+    // Open hand: all four extended
+    const openLms = createSyntheticLandmarks({
+      thumbTip: { x: 0.35, y: 0.40 },
+      fingers: { index: { ext: true }, middle: { ext: true }, ring: { ext: true }, pinky: { ext: true } }
+    });
+    expect(classifyInstantPose(openLms)).toBe('open');
+
+    // None of these should misclassify as a pinch or rotation
+    expect(classifyInstantPose(fistLms)).not.toBe('rotate_left');
+    expect(classifyInstantPose(pointLms)).not.toBe('pinch_index');
+    expect(classifyInstantPose(peaceLms)).not.toBe('open');
+    expect(classifyInstantPose(openLms)).not.toBe('point');
+  });
+
   it('keeps engaged pinch active until distance exceeds release threshold (0.45)', () => {
     // Engaged pinch where middle finger is close (margin < 0.15), but index d <= 0.45
     const lms = createSyntheticLandmarks({

@@ -34,21 +34,31 @@ describe('Landmarks and Coordinate Mapping', () => {
     expect(assignDeck(0.52, null)).toBe('B');
   });
 
-  it('assigns decks autonomously when two hands are present, regardless of frame position', () => {
-    // Both hands on the left side of frame (user sitting to the left)
+  it('assigns decks for two hands adhering strictly to screen regions without cross-track misassignment', () => {
+    // Both hands on the left side of frame -> both control Deck A, never misassigning Deck B to left-side hand
     const leftSide = assignTwoDecks(0.25, 0.42);
     expect(leftSide.deck1).toBe('A');
-    expect(leftSide.deck2).toBe('B');
+    expect(leftSide.deck2).toBe('A');
 
-    // Both hands on the right side of frame (user sitting to the right)
+    // Both hands on the right side of frame -> both control Deck B, never misassigning Deck A to right-side hand
     const rightSide = assignTwoDecks(0.58, 0.75);
-    expect(rightSide.deck1).toBe('A');
+    expect(rightSide.deck1).toBe('B');
     expect(rightSide.deck2).toBe('B');
 
-    // Order reversed: hand 1 is on the right, hand 2 is on the left
+    // One hand on left, one on right
+    const split = assignTwoDecks(0.30, 0.70);
+    expect(split.deck1).toBe('A');
+    expect(split.deck2).toBe('B');
+
+    // Order reversed: hand 1 on right, hand 2 on left
     const reversed = assignTwoDecks(0.70, 0.30);
     expect(reversed.deck1).toBe('B');
     expect(reversed.deck2).toBe('A');
+
+    // Deadband hysteresis preservation
+    const deadbandHysteresis = assignTwoDecks(0.50, 0.50, 'A', 'B');
+    expect(deadbandHysteresis.deck1).toBe('A');
+    expect(deadbandHysteresis.deck2).toBe('B');
   });
 
   it('strictly isolates left and right screen regions so right-side positions never map to Deck A', () => {
